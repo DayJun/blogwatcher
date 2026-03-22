@@ -81,3 +81,68 @@ func TestParseFile_FileNotFound(t *testing.T) {
 		t.Error("expected error for non-existent file, got nil")
 	}
 }
+
+func TestExtractOutlines_Nested(t *testing.T) {
+	opml := &OPML{}
+	opml.Body.Outlines = []Outline{
+		{
+			Text: "Category",
+			Outlines: []Outline{
+				{Text: "Blog 1", XMLURL: "https://blog1.com/feed"},
+				{Text: "Blog 2", XMLURL: "https://blog2.com/feed"},
+			},
+		},
+		{
+			Text:   "Blog 3",
+			XMLURL: "https://blog3.com/feed",
+		},
+	}
+
+	outlines := ExtractOutlines(opml)
+
+	if len(outlines) != 3 {
+		t.Fatalf("expected 3 outlines, got %d", len(outlines))
+	}
+
+	expectedTexts := []string{"Blog 1", "Blog 2", "Blog 3"}
+	for i, expected := range expectedTexts {
+		if outlines[i].Text != expected {
+			t.Errorf("outlines[%d].Text = %q, want %q", i, outlines[i].Text, expected)
+		}
+	}
+}
+
+func TestExtractOutlines_Empty(t *testing.T) {
+	opml := &OPML{}
+	outlines := ExtractOutlines(opml)
+
+	if len(outlines) != 0 {
+		t.Errorf("expected 0 outlines, got %d", len(outlines))
+	}
+}
+
+func TestExtractOutlines_DeeplyNested(t *testing.T) {
+	opml := &OPML{}
+	opml.Body.Outlines = []Outline{
+		{
+			Text: "Level 1",
+			Outlines: []Outline{
+				{
+					Text: "Level 2",
+					Outlines: []Outline{
+						{Text: "Deep Blog", XMLURL: "https://deep.com/feed"},
+					},
+				},
+			},
+		},
+	}
+
+	outlines := ExtractOutlines(opml)
+
+	if len(outlines) != 1 {
+		t.Fatalf("expected 1 outline, got %d", len(outlines))
+	}
+	if outlines[0].Text != "Deep Blog" {
+		t.Errorf("expected 'Deep Blog', got %q", outlines[0].Text)
+	}
+}

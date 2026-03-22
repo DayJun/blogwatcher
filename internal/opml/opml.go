@@ -40,3 +40,22 @@ func ParseFile(path string) (*OPML, error) {
 
 	return &opml, nil
 }
+
+// ExtractOutlines recursively extracts all outlines with xmlUrl from an OPML document.
+// It skips category outlines (those without xmlUrl) and only returns actual feed entries.
+func ExtractOutlines(opml *OPML) []Outline {
+	var result []Outline
+	extractOutlinesRecursive(opml.Body.Outlines, &result)
+	return result
+}
+
+func extractOutlinesRecursive(outlines []Outline, result *[]Outline) {
+	for _, o := range outlines {
+		if o.XMLURL != "" {
+			*result = append(*result, o)
+		}
+		if len(o.Outlines) > 0 {
+			extractOutlinesRecursive(o.Outlines, result)
+		}
+	}
+}
