@@ -80,8 +80,8 @@ func TestImportBlogs_DuplicateInDatabase(t *testing.T) {
 		t.Errorf("expected 0 failed, got %d", len(result.Failed))
 	}
 
-	if len(result.Skipped) > 0 && result.Skipped[0].URL != "https://blog1.com" {
-		t.Errorf("expected skipped URL to be https://blog1.com, got %s", result.Skipped[0].URL)
+	if len(result.Skipped) > 0 && result.Skipped[0].Reason != "blog with URL 'https://blog1.com' already exists" {
+		t.Errorf("expected reason 'blog with URL 'https://blog1.com' already exists', got %s", result.Skipped[0].Reason)
 	}
 }
 
@@ -112,6 +112,43 @@ func TestImportBlogs_DuplicateInOPML(t *testing.T) {
 	if len(result.Failed) != 0 {
 		t.Errorf("expected 0 failed, got %d", len(result.Failed))
 	}
+
+	if len(result.Skipped) > 0 && result.Skipped[0].Reason != "duplicate within OPML file (URL already imported)" {
+		t.Errorf("expected reason 'duplicate within OPML file (URL already imported)', got %s", result.Skipped[0].Reason)
+	}
+}
+
+func TestImportBlogs_DuplicateNameInOPML(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+	db, err := storage.OpenDatabase(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// Same name appears twice in OPML with different URLs
+	outlines := []opml.Outline{
+		{Title: "Blog 1", HTMLURL: "https://blog1.com", XMLURL: "https://blog1.com/feed"},
+		{Title: "Blog 1", HTMLURL: "https://blog1-alt.com", XMLURL: "https://blog1-alt.com/feed"},
+		{Title: "Blog 2", HTMLURL: "https://blog2.com", XMLURL: "https://blog2.com/feed"},
+	}
+
+	result := ImportBlogs(db, outlines)
+
+	if len(result.Imported) != 2 {
+		t.Errorf("expected 2 imported, got %d", len(result.Imported))
+	}
+	if len(result.Skipped) != 1 {
+		t.Errorf("expected 1 skipped, got %d", len(result.Skipped))
+	}
+	if len(result.Failed) != 0 {
+		t.Errorf("expected 0 failed, got %d", len(result.Failed))
+	}
+
+	if len(result.Skipped) > 0 && result.Skipped[0].Reason != "duplicate within OPML file (name already imported)" {
+		t.Errorf("expected reason 'duplicate within OPML file (name already imported)', got %s", result.Skipped[0].Reason)
+	}
 }
 
 func TestImportBlogs_MissingXMLURL(t *testing.T) {
@@ -136,8 +173,8 @@ func TestImportBlogs_MissingXMLURL(t *testing.T) {
 	if len(result.Failed) != 1 {
 		t.Errorf("expected 1 failed, got %d", len(result.Failed))
 	}
-	if len(result.Failed) > 0 && result.Failed[0].Reason != "missing URL" {
-		t.Errorf("expected missing URL reason, got %s", result.Failed[0].Reason)
+	if len(result.Failed) > 0 && result.Failed[0].Reason != "missing feed URL" {
+		t.Errorf("expected missing feed URL reason, got %s", result.Failed[0].Reason)
 	}
 }
 
@@ -247,4 +284,25 @@ func TestImportBlogs_EmptyTitleUsesText(t *testing.T) {
 	if result.Imported[0].Name != "Text Value" {
 		t.Errorf("expected name 'Text Value', got %s", result.Imported[0].Name)
 	}
+}
+
+func TestParseFile_RealOPML(t *testing.T) {
+	opmlData, err := opml.ParseFile("C:/Users/dajun/Downloads/tiny.opml")
+	if err != nil {
+		t.Fatalf("ParseFile() error = %v", err)
+	}
+
+	outlines := opml.ExtractOutlines(opmlData)
+	if len(outlines) == 0 {
+		t.Error("expected to extract feeds from real OPML")
+	}
+
+	// Verify all outlines have xmlUrl
+	for i, o := range outlines {
+		if o.XMLURL == "" {
+			t.Errorf("outlines[%d] missing xmlUrl", i)
+		}
+	}
+
+	t.Logf("Extracted %d feeds from real OPML file", len(outlines))
 }

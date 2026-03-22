@@ -3,7 +3,6 @@ package controller
 import (
 	"net/url"
 
-	"github.com/Hyaxia/blogwatcher/internal/model"
 	"github.com/Hyaxia/blogwatcher/internal/opml"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
 )
@@ -16,8 +15,8 @@ type ImportedBlog struct {
 
 // SkippedBlog represents a blog that was skipped because it already exists.
 type SkippedBlog struct {
-	Name string
-	URL  string
+	Name   string
+	Reason string
 }
 
 // FailedBlog represents a blog that failed to import.
@@ -43,18 +42,19 @@ func ImportBlogs(db *storage.Database, outlines []opml.Outline) ImportResult {
 		Failed:   make([]FailedBlog, 0),
 	}
 
-	seen := make(map[string]bool)
+	seenNames := make(map[string]bool)
+	seenURLs := make(map[string]bool)
 
 	for _, o := range outlines {
 		name := resolveName(o)
 		blogURL := resolveURL(o)
-		feedURL := o.XMLURL
 
-		if blogURL == "" {
+		// Check for missing feed URL (xmlUrl) - this is required
+		if o.XMLURL == "" {
 			result.Failed = append(result.Failed, FailedBlog{
 				Name:   name,
 				URL:    blogURL,
-				Reason: "missing URL",
+				Reason: "missing feed URL",
 			})
 			continue
 		}
@@ -63,45 +63,39 @@ func ImportBlogs(db *storage.Database, outlines []opml.Outline) ImportResult {
 			name = deriveDomain(blogURL)
 		}
 
-		// Check for duplicates within OPML
-		if seen[blogURL] {
+		// Check for duplicates within OPML by name
+		if seenNames[name] {
 			result.Skipped = append(result.Skipped, SkippedBlog{
-				Name: name,
-				URL:  blogURL,
+				Name:   name,
+				Reason: "duplicate within OPML file (name already imported)",
 			})
 			continue
 		}
-		seen[blogURL] = true
+		// Check for duplicates within OPML by URL
+		if seenURLs[blogURL] {
+			result.Skipped = append(result.Skipped, SkippedBlog{
+				Name:   name,
+				Reason: "duplicate within OPML file (URL already imported)",
+			})
+			continue
+		}
+		seenNames[name] = true
+		seenURLs[blogURL] = true
 
-		// Check if blog already exists in database
-		existing, err := db.GetBlogByURL(blogURL)
+		// Use controller.AddBlog which handles duplicate checking
+		_, err := AddBlog(db, name, blogURL, o.XMLURL, "")
 		if err != nil {
+			if existsErr, ok := err.(BlogAlreadyExistsError); ok {
+				result.Skipped = append(result.Skipped, SkippedBlog{
+					Name:   name,
+					Reason: "blog with " + existsErr.Field + " '" + existsErr.Value + "' already exists",
+				})
+				continue
+			}
 			result.Failed = append(result.Failed, FailedBlog{
 				Name:   name,
 				URL:    blogURL,
-				Reason: "database error: " + err.Error(),
-			})
-			continue
-		}
-		if existing != nil {
-			result.Skipped = append(result.Skipped, SkippedBlog{
-				Name: name,
-				URL:  blogURL,
-			})
-			continue
-		}
-
-		// Add the blog
-		_, err = db.AddBlog(model.Blog{
-			Name:    name,
-			URL:     blogURL,
-			FeedURL: feedURL,
-		})
-		if err != nil {
-			result.Failed = append(result.Failed, FailedBlog{
-				Name:   name,
-				URL:    blogURL,
-				Reason: "failed to add: " + err.Error(),
+				Reason: err.Error(),
 			})
 			continue
 		}
