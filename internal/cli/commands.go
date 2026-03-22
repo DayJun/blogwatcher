@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hyaxia/blogwatcher/internal/controller"
 	"github.com/Hyaxia/blogwatcher/internal/model"
+	"github.com/Hyaxia/blogwatcher/internal/opml"
 	"github.com/Hyaxia/blogwatcher/internal/scanner"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
 )
@@ -347,6 +348,65 @@ func newUnreadCommand() *cobra.Command {
 			} else {
 				color.New(color.FgGreen).Printf("Marked article %d as unread\n", articleID)
 			}
+			return nil
+		},
+	}
+	return cmd
+}
+
+func newImportCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "import <file.opml>",
+		Short: "Import blogs from an OPML file.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			filePath := args[0]
+
+			opmlDoc, err := opml.ParseFile(filePath)
+			if err != nil {
+				printError(err)
+				return markError(err)
+			}
+
+			outlines := opml.ExtractOutlines(opmlDoc)
+
+			if len(outlines) == 0 {
+				color.New(color.FgYellow).Println("No feeds found in OPML file.")
+				return nil
+			}
+
+			db, err := storage.OpenDatabase("")
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			color.New(color.FgCyan).Printf("Importing from %s...\n\n", filePath)
+
+			result := controller.ImportBlogs(db, outlines)
+
+			for _, imported := range result.Imported {
+				color.New(color.FgGreen).Printf("✓ Imported: %q\n", imported.Name)
+			}
+			for _, skipped := range result.Skipped {
+				color.New(color.FgYellow).Printf("⚠ Skipped %q: %s\n", skipped.Name, skipped.Reason)
+			}
+			for _, failed := range result.Failed {
+				name := failed.Name
+				if name == "" {
+					name = "(unknown)"
+				}
+				color.New(color.FgRed).Printf("✗ Failed: %q - %s\n", name, failed.Reason)
+			}
+
+			fmt.Println()
+			color.New(color.FgCyan, color.Bold).Printf(
+				"Import complete: %d imported, %d skipped, %d failed\n",
+				len(result.Imported),
+				len(result.Skipped),
+				len(result.Failed),
+			)
+
 			return nil
 		},
 	}
