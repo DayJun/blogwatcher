@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/Hyaxia/blogwatcher/internal/opml"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
@@ -134,5 +135,8 @@ func deriveDomain(rawURL string) string {
 	if err != nil {
 		return rawURL
 	}
-	return parsed.Host
+	host := parsed.Host
+	// Remove www. prefix if present
+	host = strings.TrimPrefix(host, "www.")
+	return host
 }

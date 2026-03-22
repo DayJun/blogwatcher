@@ -286,23 +286,27 @@ func TestImportBlogs_EmptyTitleUsesText(t *testing.T) {
 	}
 }
 
-func TestParseFile_RealOPML(t *testing.T) {
-	opmlData, err := opml.ParseFile("C:/Users/dajun/Downloads/tiny.opml")
+func TestImportBlogs_DomainFallbackStripsWWW(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+	db, err := storage.OpenDatabase(dbPath)
 	if err != nil {
-		t.Fatalf("ParseFile() error = %v", err)
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// No title or text, name should be derived from domain with www. stripped
+	outlines := []opml.Outline{
+		{HTMLURL: "https://www.example.com/blog", XMLURL: "https://www.example.com/feed"},
 	}
 
-	outlines := opml.ExtractOutlines(opmlData)
-	if len(outlines) == 0 {
-		t.Error("expected to extract feeds from real OPML")
-	}
+	result := ImportBlogs(db, outlines)
 
-	// Verify all outlines have xmlUrl
-	for i, o := range outlines {
-		if o.XMLURL == "" {
-			t.Errorf("outlines[%d] missing xmlUrl", i)
-		}
+	if len(result.Imported) != 1 {
+		t.Fatalf("expected 1 imported, got %d", len(result.Imported))
 	}
-
-	t.Logf("Extracted %d feeds from real OPML file", len(outlines))
+	if result.Imported[0].Name != "example.com" {
+		t.Errorf("expected name 'example.com' (www. stripped), got %s", result.Imported[0].Name)
+	}
 }
+
