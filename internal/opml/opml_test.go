@@ -51,6 +51,12 @@ func TestParseFile_ValidOPML(t *testing.T) {
 	if got2.Text != "Hacker News" {
 		t.Errorf("expected Text 'Hacker News', got %q", got2.Text)
 	}
+	if got2.HTMLURL != "https://news.ycombinator.com" {
+		t.Errorf("expected HTMLUrl 'https://news.ycombinator.com', got %q", got2.HTMLURL)
+	}
+	if got2.XMLURL != "https://news.ycombinator.com/rss" {
+		t.Errorf("expected XMLUrl 'https://news.ycombinator.com/rss', got %q", got2.XMLURL)
+	}
 }
 
 func TestParseFile_InvalidXML(t *testing.T) {
