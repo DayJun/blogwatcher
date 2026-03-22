@@ -298,17 +298,34 @@ func (db *Database) GetExistingArticleURLs(urls []string) (map[string]struct{}, 
 	return result, nil
 }
 
-func (db *Database) ListArticles(unreadOnly bool, blogID *int64) ([]model.Article, error) {
+// NoPagination is passed to ListArticles perPage parameter to return all records.
+const NoPagination = 0
+
+func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, page int, perPage int) ([]model.Article, error) {
 	query := `SELECT id, blog_id, title, url, published_date, discovered_date, is_read FROM articles WHERE 1=1`
 	var args []interface{}
-	if unreadOnly {
-		query += " AND is_read = 0"
+	if unreadOnly != nil {
+		if *unreadOnly {
+			query += " AND is_read = 0"
+		} else {
+			query += " AND is_read = 1"
+		}
 	}
 	if blogID != nil {
 		query += " AND blog_id = ?"
 		args = append(args, *blogID)
 	}
 	query += " ORDER BY discovered_date DESC"
+
+	// Add pagination if perPage > 0
+	if perPage > 0 {
+		if page < 1 {
+			page = 1
+		}
+		offset := (page - 1) * perPage
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, perPage, offset)
+	}
 
 	rows, err := db.conn.Query(query, args...)
 	if err != nil {

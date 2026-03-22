@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,7 +51,7 @@ func TestDatabaseCreatesFileAndCRUD(t *testing.T) {
 		t.Fatalf("expected 2 articles, got %d", count)
 	}
 
-	list, err := db.ListArticles(false, nil)
+	list, err := db.ListArticles(nil, nil, 1, NoPagination)
 	if err != nil {
 		t.Fatalf("list articles: %v", err)
 	}
@@ -265,7 +266,7 @@ func TestListArticlesFiltersAndOrdering(t *testing.T) {
 		t.Fatalf("mark read: %v", err)
 	}
 
-	all, err := db.ListArticles(false, nil)
+	all, err := db.ListArticles(nil, nil, 1, NoPagination)
 	if err != nil {
 		t.Fatalf("list articles: %v", err)
 	}
@@ -276,16 +277,17 @@ func TestListArticlesFiltersAndOrdering(t *testing.T) {
 		t.Fatalf("expected newest article first")
 	}
 
-	unread, err := db.ListArticles(true, nil)
+	unreadFilter := true
+	unreadArticles, err := db.ListArticles(&unreadFilter, nil, 1, NoPagination)
 	if err != nil {
 		t.Fatalf("list unread: %v", err)
 	}
-	if len(unread) != 2 {
-		t.Fatalf("expected 2 unread articles, got %d", len(unread))
+	if len(unreadArticles) != 2 {
+		t.Fatalf("expected 2 unread articles, got %d", len(unreadArticles))
 	}
 
 	blogID := blogB.ID
-	filtered, err := db.ListArticles(false, &blogID)
+	filtered, err := db.ListArticles(nil, &blogID, 1, NoPagination)
 	if err != nil {
 		t.Fatalf("list by blog: %v", err)
 	}
@@ -325,7 +327,7 @@ func TestBulkInsertDuplicateRollbackAndEmpty(t *testing.T) {
 		t.Fatalf("expected bulk insert to fail on duplicate url")
 	}
 
-	articles, err := db.ListArticles(false, nil)
+	articles, err := db.ListArticles(nil, nil, 1, NoPagination)
 	if err != nil {
 		t.Fatalf("list articles: %v", err)
 	}
@@ -438,5 +440,169 @@ func TestCountArticles(t *testing.T) {
 	}
 	if count != 3 {
 		t.Fatalf("expected 3 for blog A, got %d", count)
+	}
+}
+
+func TestListArticlesPagination(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	blog, err := db.AddBlog(model.Blog{Name: "Test", URL: "https://example.com"})
+	if err != nil {
+		t.Fatalf("add blog: %v", err)
+	}
+
+	// Add 5 articles with different dates
+	for i := 1; i <= 5; i++ {
+		articleTime := time.Date(2024, 1, i, 0, 0, 0, 0, time.UTC)
+		_, err := db.AddArticle(model.Article{
+			BlogID:        blog.ID,
+			Title:         fmt.Sprintf("Article %d", i),
+			URL:           fmt.Sprintf("https://example.com/%d", i),
+			DiscoveredDate: &articleTime,
+		})
+		if err != nil {
+			t.Fatalf("add article %d: %v", i, err)
+		}
+	}
+
+	// Test pagination - page 1, perPage 2
+	page1, err := db.ListArticles(nil, nil, 1, 2)
+	if err != nil {
+		t.Fatalf("list page 1: %v", err)
+	}
+	if len(page1) != 2 {
+		t.Fatalf("expected 2 articles on page 1, got %d", len(page1))
+	}
+	// Most recent first
+	if page1[0].Title != "Article 5" || page1[1].Title != "Article 4" {
+		t.Fatalf("unexpected page 1 order: %s, %s", page1[0].Title, page1[1].Title)
+	}
+
+	// Test pagination - page 2
+	page2, err := db.ListArticles(nil, nil, 2, 2)
+	if err != nil {
+		t.Fatalf("list page 2: %v", err)
+	}
+	if len(page2) != 2 {
+		t.Fatalf("expected 2 articles on page 2, got %d", len(page2))
+	}
+	if page2[0].Title != "Article 3" || page2[1].Title != "Article 2" {
+		t.Fatalf("unexpected page 2 order: %s, %s", page2[0].Title, page2[1].Title)
+	}
+
+	// Test pagination - page 3 (partial)
+	page3, err := db.ListArticles(nil, nil, 3, 2)
+	if err != nil {
+		t.Fatalf("list page 3: %v", err)
+	}
+	if len(page3) != 1 {
+		t.Fatalf("expected 1 article on page 3, got %d", len(page3))
+	}
+
+	// Test pagination - beyond range
+	page4, err := db.ListArticles(nil, nil, 4, 2)
+	if err != nil {
+		t.Fatalf("list page 4: %v", err)
+	}
+	if len(page4) != 0 {
+		t.Fatalf("expected 0 articles on page 4, got %d", len(page4))
+	}
+}
+
+func TestListArticlesNoPagination(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	blog, err := db.AddBlog(model.Blog{Name: "Test", URL: "https://example.com"})
+	if err != nil {
+		t.Fatalf("add blog: %v", err)
+	}
+
+	for i := 1; i <= 5; i++ {
+		_, err := db.AddArticle(model.Article{
+			BlogID: blog.ID,
+			Title:  fmt.Sprintf("Article %d", i),
+			URL:    fmt.Sprintf("https://example.com/%d", i),
+		})
+		if err != nil {
+			t.Fatalf("add article %d: %v", i, err)
+		}
+	}
+
+	// perPage = 0 means no pagination (return all)
+	all, err := db.ListArticles(nil, nil, 1, NoPagination)
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(all) != 5 {
+		t.Fatalf("expected 5 articles with no pagination, got %d", len(all))
+	}
+}
+
+func TestListArticlesReadFilter(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	blog, err := db.AddBlog(model.Blog{Name: "Test", URL: "https://example.com"})
+	if err != nil {
+		t.Fatalf("add blog: %v", err)
+	}
+
+	// Add articles: firstArticle will be marked read, secondArticle stays unread
+	firstArticle, err := db.AddArticle(model.Article{BlogID: blog.ID, Title: "First Article", URL: "https://example.com/1"})
+	if err != nil {
+		t.Fatalf("add article: %v", err)
+	}
+	_, err = db.AddArticle(model.Article{BlogID: blog.ID, Title: "Second Article", URL: "https://example.com/2"})
+	if err != nil {
+		t.Fatalf("add article: %v", err)
+	}
+	if _, err := db.MarkArticleRead(firstArticle.ID); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+
+	// Filter: unread only - should return second article (not marked read)
+	unread := true
+	list, err := db.ListArticles(&unread, nil, 1, NoPagination)
+	if err != nil {
+		t.Fatalf("list unread: %v", err)
+	}
+	if len(list) != 1 || list[0].Title != "Second Article" {
+		t.Fatalf("expected 1 unread article 'Second Article', got %v", list)
+	}
+
+	// Filter: read only - should return first article (marked read)
+	read := false
+	list, err = db.ListArticles(&read, nil, 1, NoPagination)
+	if err != nil {
+		t.Fatalf("list read: %v", err)
+	}
+	if len(list) != 1 || list[0].Title != "First Article" {
+		t.Fatalf("expected 1 read article 'First Article', got %v", list)
+	}
+
+	// Filter: all (nil)
+	list, err = db.ListArticles(nil, nil, 1, NoPagination)
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 total articles, got %d", len(list))
 	}
 }
