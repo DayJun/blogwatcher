@@ -4,4 +4,14 @@ list_blogs.txt
 .vscode/
 build/
 blogwatcher.egg-info/
-*/__pycache__
+*/__pycache__/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Claude Code
+.claude/
