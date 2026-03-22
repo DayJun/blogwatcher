@@ -195,7 +195,10 @@ func newScanCommand() *cobra.Command {
 
 func newArticlesCommand() *cobra.Command {
 	var showAll bool
+	var showRead bool
 	var blogName string
+	var page int
+	var perPage int
 
 	cmd := &cobra.Command{
 		Use:   "articles",
@@ -206,34 +209,62 @@ func newArticlesCommand() *cobra.Command {
 				return err
 			}
 			defer db.Close()
-			articles, blogNames, err := controller.GetArticles(db, showAll, blogName)
+
+			// Determine status filter
+			status := "unread"
+			if showAll {
+				status = "all"
+			} else if showRead {
+				status = "read"
+			}
+
+			// Validate and normalize pagination
+			if page < 1 {
+				page = 1
+			}
+			if perPage < 1 {
+				perPage = 20
+			}
+			if perPage > 100 {
+				perPage = 100
+			}
+
+			result, err := controller.GetArticles(db, status, blogName, page, perPage)
 			if err != nil {
 				printError(err)
 				return markError(err)
 			}
-			if len(articles) == 0 {
-				if showAll {
-					fmt.Println("No articles found.")
-				} else {
-					color.New(color.FgGreen).Println("No unread articles!")
+
+			if result.Total == 0 {
+				label := "Unread articles"
+				if status == "read" {
+					label = "Read articles"
+				} else if status == "all" {
+					label = "Articles"
 				}
+				color.New(color.FgCyan, color.Bold).Printf("%s (no results):\n\n", label)
 				return nil
 			}
 
 			label := "Unread articles"
-			if showAll {
+			if status == "read" {
+				label = "Read articles"
+			} else if status == "all" {
 				label = "All articles"
 			}
-			color.New(color.FgCyan, color.Bold).Printf("%s (%d):\n\n", label, len(articles))
-			for _, article := range articles {
-				printArticle(article, blogNames[article.BlogID])
+			color.New(color.FgCyan, color.Bold).Printf("%s (page %d/%d, %d total):\n\n", label, result.Page, result.TotalPages, result.Total)
+			for _, article := range result.Articles {
+				printArticle(article, result.BlogNames[article.BlogID])
 			}
 			return nil
 		},
 	}
 
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all articles (including read)")
+	cmd.Flags().BoolVarP(&showRead, "read", "r", false, "Show only read articles")
 	cmd.Flags().StringVarP(&blogName, "blog", "b", "", "Filter by blog name")
+	cmd.Flags().IntVarP(&page, "page", "p", 1, "Page number")
+	cmd.Flags().IntVarP(&perPage, "per-page", "P", 20, "Articles per page (max 100)")
 	return cmd
 }
 
@@ -282,12 +313,12 @@ func newReadAllCommand() *cobra.Command {
 			}
 			defer db.Close()
 
-			articles, blogNames, err := controller.GetArticles(db, false, blogName)
+			result, err := controller.GetArticles(db, "unread", blogName, 1, 1000)
 			if err != nil {
 				printError(err)
 				return markError(err)
 			}
-			if len(articles) == 0 {
+			if len(result.Articles) == 0 {
 				color.New(color.FgGreen).Println("No unread articles to mark as read.")
 				return nil
 			}
@@ -297,7 +328,7 @@ func newReadAllCommand() *cobra.Command {
 				if blogName != "" {
 					scope = fmt.Sprintf("from '%s'", blogName)
 				}
-				confirmed, err := confirm(fmt.Sprintf("Mark %d article(s) %s as read?", len(articles), scope))
+				confirmed, err := confirm(fmt.Sprintf("Mark %d article(s) %s as read?", len(result.Articles), scope))
 				if err != nil {
 					return err
 				}
@@ -312,7 +343,6 @@ func newReadAllCommand() *cobra.Command {
 				return markError(err)
 			}
 
-			_ = blogNames
 			color.New(color.FgGreen).Printf("Marked %d article(s) as read\n", len(marked))
 			return nil
 		},
