@@ -6,6 +6,7 @@ A Go CLI tool to track blog articles, detect new posts, and manage read/unread s
 
 -   **Dual Source Support** - Tries RSS feeds first, falls back to HTML scraping
 -   **Automatic Feed Discovery** - Detects RSS/Atom URLs from blog homepages
+-   **OPML Import** - Import blogs from OPML files exported from other RSS readers
 -   **Read/Unread Management** - Track which articles you've read
 -   **Blog Filtering** - View articles from specific blogs
 -   **Duplicate Prevention** - Never tracks the same article twice
@@ -40,6 +41,19 @@ blogwatcher add "Tech Blog" https://techblog.com --feed-url https://techblog.com
 # Add with HTML scraping selector (for blogs without feeds)
 blogwatcher add "No-RSS Blog" https://norss.com --scrape-selector "article h2 a"
 ```
+
+### Importing Blogs
+
+```bash
+# Import blogs from an OPML file
+blogwatcher import ~/Downloads/feeds.opml
+```
+
+OPML files exported from RSS readers (like Feedly, Inoreader, NetNewsWire) are supported. The import command:
+
+-   Parses nested categories and extracts all feeds
+-   Skips duplicates (blogs already in the database)
+-   Shows a summary with imported, skipped, and failed counts
 
 ### Managing Blogs
 
