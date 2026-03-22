@@ -149,6 +149,8 @@ func ImportBlogs(db *storage.Database, outlines []opml.Outline) ImportResult
      - On success, add to Imported and tracking maps
    - Return ImportResult
 
+**Empty string handling:** Empty attribute values (e.g., `title=""`) are treated as "not provided" and trigger fallback behavior.
+
 ## Error Handling
 
 | Scenario | Behavior |
@@ -156,7 +158,7 @@ func ImportBlogs(db *storage.Database, outlines []opml.Outline) ImportResult
 | File not found | Error and exit |
 | Invalid XML | Error with parse details |
 | Missing `xmlUrl` | Failed: "missing feed URL" |
-| Missing `htmlUrl` and `xmlUrl` | Failed: "missing URL" |
+| Missing `htmlUrl` (but `xmlUrl` exists) | Use `xmlUrl` as blog URL |
 | Missing name attributes | Derive from domain; if that fails: Failed |
 | Duplicate in database | Skipped with specific reason (name or URL conflict) |
 | Duplicate in same OPML | Skipped: "duplicate within OPML file" |
