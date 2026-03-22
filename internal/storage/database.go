@@ -329,6 +329,29 @@ func (db *Database) ListArticles(unreadOnly bool, blogID *int64) ([]model.Articl
 	return articles, rows.Err()
 }
 
+func (db *Database) CountArticles(unreadOnly *bool, blogID *int64) (int, error) {
+	query := `SELECT COUNT(*) FROM articles WHERE 1=1`
+	var args []interface{}
+	if unreadOnly != nil {
+		if *unreadOnly {
+			query += " AND is_read = 0"
+		} else {
+			query += " AND is_read = 1"
+		}
+	}
+	if blogID != nil {
+		query += " AND blog_id = ?"
+		args = append(args, *blogID)
+	}
+
+	row := db.conn.QueryRow(query, args...)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (db *Database) MarkArticleRead(id int64) (bool, error) {
 	result, err := db.conn.Exec(`UPDATE articles SET is_read = 1 WHERE id = ?`, id)
 	if err != nil {

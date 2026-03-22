@@ -369,3 +369,74 @@ func TestLookupHelpers(t *testing.T) {
 		t.Fatalf("expected missing article to not exist")
 	}
 }
+
+func TestCountArticles(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	blogA, err := db.AddBlog(model.Blog{Name: "A", URL: "https://a.example.com"})
+	if err != nil {
+		t.Fatalf("add blog: %v", err)
+	}
+
+	// Add 3 articles, 1 read
+	_, err = db.AddArticle(model.Article{BlogID: blogA.ID, Title: "One", URL: "https://a.example.com/1"})
+	if err != nil {
+		t.Fatalf("add article: %v", err)
+	}
+	second, err := db.AddArticle(model.Article{BlogID: blogA.ID, Title: "Two", URL: "https://a.example.com/2"})
+	if err != nil {
+		t.Fatalf("add article: %v", err)
+	}
+	_, err = db.AddArticle(model.Article{BlogID: blogA.ID, Title: "Three", URL: "https://a.example.com/3"})
+	if err != nil {
+		t.Fatalf("add article: %v", err)
+	}
+	if _, err := db.MarkArticleRead(second.ID); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+
+	// Count all
+	total, err := db.CountArticles(nil, nil)
+	if err != nil {
+		t.Fatalf("count all: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("expected 3 total, got %d", total)
+	}
+
+	// Count unread
+	unread := true
+	count, err := db.CountArticles(&unread, nil)
+	if err != nil {
+		t.Fatalf("count unread: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 unread, got %d", count)
+	}
+
+	// Count read
+	read := false
+	count, err = db.CountArticles(&read, nil)
+	if err != nil {
+		t.Fatalf("count read: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 read, got %d", count)
+	}
+
+	// Count by blog
+	blogID := blogA.ID
+	count, err = db.CountArticles(nil, &blogID)
+	if err != nil {
+		t.Fatalf("count by blog: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("expected 3 for blog A, got %d", count)
+	}
+}
