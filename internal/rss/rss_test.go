@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const sampleFeed = `<?xml version="1.0" encoding="UTF-8" ?>
@@ -62,4 +65,31 @@ func TestDiscoverFeedURL(t *testing.T) {
 	if feedURL == "" {
 		t.Fatalf("expected feed url")
 	}
+}
+
+func TestParseFeedWithContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel><title>Test</title>
+<item>
+<title>Test Article</title>
+<link>https://example.com/article</link>
+<description>Short description</description>
+<content:encoded><![CDATA[<p>Full content here</p>]]></content:encoded>
+</item>
+</channel>
+</rss>`))
+	}))
+	defer server.Close()
+
+	articles, err := ParseFeed(server.URL, 10*time.Second)
+	require.NoError(t, err)
+	require.Len(t, articles, 1)
+
+	assert.Equal(t, "Test Article", articles[0].Title)
+	assert.Equal(t, "Short description", articles[0].Description)
+	assert.Contains(t, articles[0].Content, "Full content here")
 }

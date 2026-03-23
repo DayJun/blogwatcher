@@ -16,6 +16,9 @@ type FeedArticle struct {
 	Title         string
 	URL           string
 	PublishedDate *time.Time
+	Content       string
+	Description   string
+	FeedSummary   string
 }
 
 type FeedParseError struct {
@@ -54,6 +57,9 @@ func ParseFeed(feedURL string, timeout time.Duration) ([]FeedArticle, error) {
 			Title:         title,
 			URL:           link,
 			PublishedDate: pickPublishedDate(item),
+			Content:       item.Content,
+			Description:   item.Description,
+			FeedSummary:   item.Description,
 		})
 	}
 
