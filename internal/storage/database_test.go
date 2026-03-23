@@ -694,3 +694,32 @@ func TestUpdateArticleSummary(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "New summary", got.Summary)
 }
+
+func TestListBlogsPaginated(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Add test blogs
+	db.AddBlog(model.Blog{Name: "Alpha Blog", URL: "https://alpha.com"})
+	db.AddBlog(model.Blog{Name: "Beta Blog", URL: "https://beta.com"})
+	db.AddBlog(model.Blog{Name: "Gamma Blog", URL: "https://gamma.com"})
+	db.AddBlog(model.Blog{Name: "Delta Blog", URL: "https://delta.com"})
+
+	// Test pagination
+	result, err := db.ListBlogsPaginated(1, 2, "")
+	require.NoError(t, err)
+	assert.Equal(t, 4, result.Total)
+	assert.Equal(t, 1, result.Page)
+	assert.Equal(t, 2, result.TotalPages)
+	assert.Len(t, result.Blogs, 2)
+	assert.Equal(t, "Alpha Blog", result.Blogs[0].Name) // Ordered by name
+
+	// Test search
+	result, err = db.ListBlogsPaginated(1, 20, "ta")
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Total) // Beta and Delta match
+	assert.Len(t, result.Blogs, 2)
+}

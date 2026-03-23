@@ -183,6 +183,97 @@ func (db *Database) ListBlogs() ([]model.Blog, error) {
 	return blogs, rows.Err()
 }
 
+// BlogListResult contains paginated blog list results
+type BlogListResult struct {
+	Blogs      []model.Blog
+	Total      int
+	Page       int
+	TotalPages int
+}
+
+// ListBlogsPaginated returns paginated blogs with optional name search filter.
+// search is a case-insensitive partial match on blog name (empty = no filter).
+func (db *Database) ListBlogsPaginated(page, perPage int, search string) (BlogListResult, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+
+	// Build WHERE clause for search
+	whereClause := "1=1"
+	var args []interface{}
+	if search != "" {
+		whereClause = "name LIKE ?"
+		args = append(args, "%"+search+"%")
+	}
+
+	// Get total count
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM blogs WHERE %s", whereClause)
+	row := db.conn.QueryRow(countQuery, args...)
+	var total int
+	if err := row.Scan(&total); err != nil {
+		return BlogListResult{}, err
+	}
+
+	// Calculate pagination
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	// Get paginated results
+	offset := (page - 1) * perPage
+	query := fmt.Sprintf("SELECT id, name, url, feed_url, scrape_selector, last_scanned FROM blogs WHERE %s ORDER BY name LIMIT ? OFFSET ?", whereClause)
+	args = append(args, perPage, offset)
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return BlogListResult{}, err
+	}
+	defer rows.Close()
+
+	var blogs []model.Blog
+	for rows.Next() {
+		blog, err := scanBlog(rows)
+		if err != nil {
+			return BlogListResult{}, err
+		}
+		if blog != nil {
+			blogs = append(blogs, *blog)
+		}
+	}
+
+	return BlogListResult{
+		Blogs:      blogs,
+		Total:      total,
+		Page:       page,
+		TotalPages: totalPages,
+	}, rows.Err()
+}
+
+// CountBlogs returns total number of blogs, optionally filtered by name search.
+func (db *Database) CountBlogs(search string) (int, error) {
+	whereClause := "1=1"
+	var args []interface{}
+	if search != "" {
+		whereClause = "name LIKE ?"
+		args = append(args, "%"+search+"%")
+	}
+
+	query := fmt.Sprintf("SELECT COUNT(*) FROM blogs WHERE %s", whereClause)
+	row := db.conn.QueryRow(query, args...)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (db *Database) UpdateBlog(blog model.Blog) error {
 	_, err := db.conn.Exec(
 		`UPDATE blogs SET name = ?, url = ?, feed_url = ?, scrape_selector = ?, last_scanned = ? WHERE id = ?`,
