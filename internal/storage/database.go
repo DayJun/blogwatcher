@@ -53,6 +53,10 @@ func OpenDatabase(path string) (*Database, error) {
 		_ = conn.Close()
 		return nil, err
 	}
+	if err := db.MigrateSchema(); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	return db, nil
 }
 
@@ -90,6 +94,37 @@ func (db *Database) init() error {
 	`
 	_, err := db.conn.Exec(schema)
 	return err
+}
+
+func (db *Database) MigrateSchema() error {
+	rows, err := db.conn.Query("PRAGMA table_info(articles)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	existingCols := make(map[string]bool)
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		existingCols[name] = true
+	}
+
+	newCols := []string{"content", "description", "feed_summary", "summary"}
+	for _, col := range newCols {
+		if !existingCols[col] {
+			_, err := db.conn.Exec(fmt.Sprintf("ALTER TABLE articles ADD COLUMN %s TEXT", col))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (db *Database) AddBlog(blog model.Blog) (model.Blog, error) {
@@ -240,12 +275,12 @@ func (db *Database) AddArticlesBulk(articles []model.Article) (int, error) {
 }
 
 func (db *Database) GetArticle(id int64) (*model.Article, error) {
-	row := db.conn.QueryRow(`SELECT id, blog_id, title, url, published_date, discovered_date, is_read FROM articles WHERE id = ?`, id)
+	row := db.conn.QueryRow(`SELECT id, blog_id, title, url, published_date, discovered_date, is_read, content, description, feed_summary, summary FROM articles WHERE id = ?`, id)
 	return scanArticle(row)
 }
 
 func (db *Database) GetArticleByURL(url string) (*model.Article, error) {
-	row := db.conn.QueryRow(`SELECT id, blog_id, title, url, published_date, discovered_date, is_read FROM articles WHERE url = ?`, url)
+	row := db.conn.QueryRow(`SELECT id, blog_id, title, url, published_date, discovered_date, is_read, content, description, feed_summary, summary FROM articles WHERE url = ?`, url)
 	return scanArticle(row)
 }
 
@@ -302,7 +337,7 @@ func (db *Database) GetExistingArticleURLs(urls []string) (map[string]struct{}, 
 const NoPagination = 0
 
 func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, page int, perPage int) ([]model.Article, error) {
-	query := `SELECT id, blog_id, title, url, published_date, discovered_date, is_read FROM articles WHERE 1=1`
+	query := `SELECT id, blog_id, title, url, published_date, discovered_date, is_read, content, description, feed_summary, summary FROM articles WHERE 1=1`
 	var args []interface{}
 	if unreadOnly != nil {
 		if *unreadOnly {
@@ -433,8 +468,12 @@ func scanArticle(scanner interface{ Scan(dest ...any) error }) (*model.Article, 
 		publishedDate sql.NullString
 		discovered    sql.NullString
 		isRead        bool
+		content       sql.NullString
+		description   sql.NullString
+		feedSummary   sql.NullString
+		summary       sql.NullString
 	)
-	if err := scanner.Scan(&id, &blogID, &title, &url, &publishedDate, &discovered, &isRead); err != nil {
+	if err := scanner.Scan(&id, &blogID, &title, &url, &publishedDate, &discovered, &isRead, &content, &description, &feedSummary, &summary); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -442,11 +481,15 @@ func scanArticle(scanner interface{ Scan(dest ...any) error }) (*model.Article, 
 	}
 
 	article := &model.Article{
-		ID:     id,
-		BlogID: blogID,
-		Title:  title,
-		URL:    url,
-		IsRead: isRead,
+		ID:          id,
+		BlogID:      blogID,
+		Title:       title,
+		URL:         url,
+		IsRead:      isRead,
+		Content:     content.String,
+		Description: description.String,
+		FeedSummary: feedSummary.String,
+		Summary:     summary.String,
 	}
 	if publishedDate.Valid {
 		if parsed, err := parseTime(publishedDate.String); err == nil {

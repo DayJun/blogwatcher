@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/Hyaxia/blogwatcher/internal/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDatabaseCreatesFileAndCRUD(t *testing.T) {
@@ -605,4 +607,33 @@ func TestListArticlesReadFilter(t *testing.T) {
 	if len(list) != 2 {
 		t.Fatalf("expected 2 total articles, got %d", len(list))
 	}
+}
+
+func TestMigrateSchemaIdempotent(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Create blog and article first
+	blog, err := db.AddBlog(model.Blog{Name: "Test", URL: "https://example.com"})
+	require.NoError(t, err)
+	_, err = db.AddArticle(model.Article{BlogID: blog.ID, Title: "Test", URL: "https://example.com/1"})
+	require.NoError(t, err)
+
+	// Run migration twice
+	err = db.MigrateSchema()
+	require.NoError(t, err)
+	err = db.MigrateSchema()
+	require.NoError(t, err)
+
+	// Verify columns exist by querying article with new fields
+	article, err := db.GetArticle(1)
+	require.NoError(t, err)
+	// New fields should be empty strings, not cause errors
+	assert.Equal(t, "", article.Content)
+	assert.Equal(t, "", article.Description)
+	assert.Equal(t, "", article.FeedSummary)
+	assert.Equal(t, "", article.Summary)
 }
