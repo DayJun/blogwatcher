@@ -18,21 +18,148 @@ import (
 	"github.com/Hyaxia/blogwatcher/internal/llm"
 	"github.com/Hyaxia/blogwatcher/internal/model"
 	"github.com/Hyaxia/blogwatcher/internal/opml"
+	"github.com/Hyaxia/blogwatcher/internal/rss"
 	"github.com/Hyaxia/blogwatcher/internal/scanner"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
 )
 
-func newAddCommand() *cobra.Command {
+func newBlogsCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "blogs [name]",
+		Short: "Manage tracked blogs.",
+		Long: `Manage tracked blogs.
+
+Without arguments, lists all tracked blogs.
+With a blog name argument, shows detailed information about that blog.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
+			db, err := storage.OpenDatabase("")
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			if len(args) == 0 {
+				return runBlogsList(db)
+			}
+			return runBlogsShow(db, args[0])
+		},
+	}
+
+	cmd.AddCommand(newBlogsAddCommand())
+	cmd.AddCommand(newBlogsEditCommand())
+	cmd.AddCommand(newBlogsRemoveCommand())
+
+	return cmd
+}
+
+func runBlogsList(db *storage.Database) error {
+	blogs, err := db.ListBlogs()
+	if err != nil {
+		return err
+	}
+	if len(blogs) == 0 {
+		fmt.Println("No blogs tracked yet. Use 'blogwatcher blogs add' to add one.")
+		return nil
+	}
+	color.New(color.FgCyan, color.Bold).Printf("Tracked blogs (%d):\n\n", len(blogs))
+	for _, blog := range blogs {
+		color.New(color.FgWhite, color.Bold).Printf("  %s\n", blog.Name)
+		fmt.Printf("    URL: %s\n", blog.URL)
+		if blog.FeedURL != "" {
+			fmt.Printf("    Feed: %s\n", blog.FeedURL)
+		}
+		if blog.ScrapeSelector != "" {
+			fmt.Printf("    Selector: %s\n", blog.ScrapeSelector)
+		}
+		if blog.LastScanned != nil {
+			fmt.Printf("    Last scanned: %s\n", blog.LastScanned.Format("2006-01-02 15:04"))
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+func runBlogsShow(db *storage.Database, name string) error {
+	blog, err := db.GetBlogByName(name)
+	if err != nil {
+		return err
+	}
+	if blog == nil {
+		err := fmt.Errorf("Blog '%s' not found", name)
+		printError(err)
+		return markError(err)
+	}
+
+	stats, err := controller.GetBlogStats(db, blog.ID)
+	if err != nil {
+		return err
+	}
+
+	color.New(color.FgCyan, color.Bold).Printf("Blog: %s\n\n", blog.Name)
+	fmt.Printf("  URL: %s\n", blog.URL)
+	if blog.FeedURL != "" {
+		fmt.Printf("  Feed: %s\n", blog.FeedURL)
+	}
+	if blog.ScrapeSelector != "" {
+		fmt.Printf("  Selector: %s\n", blog.ScrapeSelector)
+	}
+	if blog.LastScanned != nil {
+		fmt.Printf("  Last scanned: %s\n", blog.LastScanned.Format("2006-01-02 15:04"))
+	}
+	fmt.Printf("  Articles: %d total, %d unread\n", stats.TotalArticles, stats.UnreadArticles)
+	return nil
+}
+
+func newBlogsAddCommand() *cobra.Command {
 	var feedURL string
 	var scrapeSelector string
 
 	cmd := &cobra.Command{
-		Use:   "add <name> <url>",
+		Use:   "add [name] <url>",
 		Short: "Add a new blog to track.",
-		Args:  cobra.ExactArgs(2),
+		Long: `Add a new blog to track.
+
+If only a URL is provided, the blog name is automatically extracted from the feed.
+If both name and URL are provided, the custom name is used.`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			url := args[1]
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
+			var name, url string
+			if len(args) == 1 {
+				// Only URL provided, auto-extract name
+				url = args[0]
+				// Try to discover feed URL if not provided
+				discoveredFeedURL := feedURL
+				if discoveredFeedURL == "" {
+					discoveredFeedURL, _ = rss.DiscoverFeedURL(url, 30*time.Second)
+				}
+				if discoveredFeedURL != "" {
+					extractedName, err := rss.GetFeedTitle(discoveredFeedURL, 30*time.Second)
+					if err == nil && extractedName != "" {
+						name = extractedName
+					}
+				}
+				if name == "" {
+					err := fmt.Errorf("Could not extract name from feed. Please provide a name.")
+					printError(err)
+					return markError(err)
+				}
+			} else {
+				// Both name and URL provided
+				name = args[0]
+				url = args[1]
+			}
+
 			db, err := storage.OpenDatabase("")
 			if err != nil {
 				return err
@@ -52,13 +179,67 @@ func newAddCommand() *cobra.Command {
 	return cmd
 }
 
-func newRemoveCommand() *cobra.Command {
+func newBlogsEditCommand() *cobra.Command {
+	var name string
+	var url string
+	var feedURL string
+	var scrapeSelector string
+
+	cmd := &cobra.Command{
+		Use:   "edit <blog_name>",
+		Short: "Edit blog properties.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
+			blogName := args[0]
+			db, err := storage.OpenDatabase("")
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			blog, err := db.GetBlogByName(blogName)
+			if err != nil {
+				return err
+			}
+			if blog == nil {
+				err := fmt.Errorf("Blog '%s' not found", blogName)
+				printError(err)
+				return markError(err)
+			}
+
+			updated, err := controller.UpdateBlog(db, blog.ID, name, url, feedURL, scrapeSelector)
+			if err != nil {
+				printError(err)
+				return markError(err)
+			}
+			color.New(color.FgGreen).Printf("Updated blog '%s'\n", updated.Name)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "New blog name")
+	cmd.Flags().StringVar(&url, "url", "", "New blog URL")
+	cmd.Flags().StringVar(&feedURL, "feed-url", "", "RSS/Atom feed URL")
+	cmd.Flags().StringVar(&scrapeSelector, "scrape-selector", "", "CSS selector for HTML scraping")
+	return cmd
+}
+
+func newBlogsRemoveCommand() *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove a blog from tracking.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
 			name := args[0]
 			if !yes {
 				confirmed, err := confirm(fmt.Sprintf("Remove blog '%s' and all its articles?", name))
@@ -83,45 +264,6 @@ func newRemoveCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
-	return cmd
-}
-
-func newBlogsCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "blogs",
-		Short: "List all tracked blogs.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := storage.OpenDatabase("")
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-			blogs, err := db.ListBlogs()
-			if err != nil {
-				return err
-			}
-			if len(blogs) == 0 {
-				fmt.Println("No blogs tracked yet. Use 'blogwatcher add' to add one.")
-				return nil
-			}
-			color.New(color.FgCyan, color.Bold).Printf("Tracked blogs (%d):\n\n", len(blogs))
-			for _, blog := range blogs {
-				color.New(color.FgWhite, color.Bold).Printf("  %s\n", blog.Name)
-				fmt.Printf("    URL: %s\n", blog.URL)
-				if blog.FeedURL != "" {
-					fmt.Printf("    Feed: %s\n", blog.FeedURL)
-				}
-				if blog.ScrapeSelector != "" {
-					fmt.Printf("    Selector: %s\n", blog.ScrapeSelector)
-				}
-				if blog.LastScanned != nil {
-					fmt.Printf("    Last scanned: %s\n", blog.LastScanned.Format("2006-01-02 15:04"))
-				}
-				fmt.Println()
-			}
-			return nil
-		},
-	}
 	return cmd
 }
 

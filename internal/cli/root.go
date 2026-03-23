@@ -18,8 +18,6 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.Version = version.Version
 	rootCmd.SetVersionTemplate("{{.Version}}\n")
 	rootCmd.AddCommand(newInitCommand())
-	rootCmd.AddCommand(newAddCommand())
-	rootCmd.AddCommand(newRemoveCommand())
 	rootCmd.AddCommand(newBlogsCommand())
 	rootCmd.AddCommand(newScanCommand())
 	rootCmd.AddCommand(newArticlesCommand())
