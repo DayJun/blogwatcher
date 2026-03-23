@@ -637,3 +637,60 @@ func TestMigrateSchemaIdempotent(t *testing.T) {
 	assert.Equal(t, "", article.FeedSummary)
 	assert.Equal(t, "", article.Summary)
 }
+
+func TestArticleContentFieldsRoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	require.NoError(t, err)
+	defer db.Close()
+
+	blog, err := db.AddBlog(model.Blog{Name: "Test", URL: "https://example.com"})
+	require.NoError(t, err)
+
+	article := model.Article{
+		BlogID:      blog.ID,
+		Title:       "Test Article",
+		URL:         "https://example.com/1",
+		Content:     "<p>Full HTML content</p>",
+		Description: "Short description",
+		FeedSummary: "Feed summary",
+		Summary:     "LLM summary",
+	}
+
+	created, err := db.AddArticle(article)
+	require.NoError(t, err)
+	assert.NotZero(t, created.ID)
+
+	got, err := db.GetArticle(created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, article.Content, got.Content)
+	assert.Equal(t, article.Description, got.Description)
+	assert.Equal(t, article.FeedSummary, got.FeedSummary)
+	assert.Equal(t, article.Summary, got.Summary)
+}
+
+func TestUpdateArticleSummary(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	require.NoError(t, err)
+	defer db.Close()
+
+	blog, err := db.AddBlog(model.Blog{Name: "Test", URL: "https://example.com"})
+	require.NoError(t, err)
+
+	article, err := db.AddArticle(model.Article{
+		BlogID: blog.ID,
+		Title:  "Test",
+		URL:    "https://example.com/1",
+	})
+	require.NoError(t, err)
+
+	err = db.UpdateArticleSummary(article.ID, "New summary")
+	require.NoError(t, err)
+
+	got, err := db.GetArticle(article.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "New summary", got.Summary)
+}

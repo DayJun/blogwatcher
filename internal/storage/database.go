@@ -219,14 +219,18 @@ func (db *Database) RemoveBlog(id int64) (bool, error) {
 
 func (db *Database) AddArticle(article model.Article) (model.Article, error) {
 	result, err := db.conn.Exec(
-		`INSERT INTO articles (blog_id, title, url, published_date, discovered_date, is_read)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO articles (blog_id, title, url, published_date, discovered_date, is_read, content, description, feed_summary, summary)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		article.BlogID,
 		article.Title,
 		article.URL,
 		formatTimePtr(article.PublishedDate),
 		formatTimePtr(article.DiscoveredDate),
 		article.IsRead,
+		nullIfEmpty(article.Content),
+		nullIfEmpty(article.Description),
+		nullIfEmpty(article.FeedSummary),
+		nullIfEmpty(article.Summary),
 	)
 	if err != nil {
 		return article, err
@@ -247,7 +251,7 @@ func (db *Database) AddArticlesBulk(articles []model.Article) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	stmt, err := _tx.Prepare(`INSERT INTO articles (blog_id, title, url, published_date, discovered_date, is_read) VALUES (?, ?, ?, ?, ?, ?)`)
+	stmt, err := _tx.Prepare(`INSERT INTO articles (blog_id, title, url, published_date, discovered_date, is_read, content, description, feed_summary, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		_ = _tx.Rollback()
 		return 0, err
@@ -262,6 +266,10 @@ func (db *Database) AddArticlesBulk(articles []model.Article) (int, error) {
 			formatTimePtr(article.PublishedDate),
 			formatTimePtr(article.DiscoveredDate),
 			article.IsRead,
+			nullIfEmpty(article.Content),
+			nullIfEmpty(article.Description),
+			nullIfEmpty(article.FeedSummary),
+			nullIfEmpty(article.Summary),
 		)
 		if err != nil {
 			_ = _tx.Rollback()
@@ -426,6 +434,11 @@ func (db *Database) MarkArticleUnread(id int64) (bool, error) {
 		return false, err
 	}
 	return rows > 0, nil
+}
+
+func (db *Database) UpdateArticleSummary(id int64, summary string) error {
+	_, err := db.conn.Exec(`UPDATE articles SET summary = ? WHERE id = ?`, summary, id)
+	return err
 }
 
 func scanBlog(scanner interface{ Scan(dest ...any) error }) (*model.Blog, error) {
