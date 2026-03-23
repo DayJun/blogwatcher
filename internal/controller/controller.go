@@ -113,7 +113,7 @@ func GetArticles(db *storage.Database, status string, blogName string, page int,
 	}
 
 	// Get paginated articles
-	articles, err := db.ListArticles(readFilter, blogID, page, perPage)
+	articles, err := db.ListArticles(readFilter, blogID, 0, page, perPage)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func MarkAllArticlesRead(db *storage.Database, blogName string) ([]model.Article
 	}
 
 	unread := true
-	articles, err := db.ListArticles(&unread, blogID, 1, storage.NoPagination)
+	articles, err := db.ListArticles(&unread, blogID, 0, 1, storage.NoPagination)
 	if err != nil {
 		return nil, err
 	}

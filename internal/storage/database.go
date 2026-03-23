@@ -344,7 +344,7 @@ func (db *Database) GetExistingArticleURLs(urls []string) (map[string]struct{}, 
 // NoPagination is passed to ListArticles perPage parameter to return all records.
 const NoPagination = 0
 
-func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, page int, perPage int) ([]model.Article, error) {
+func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, days int, page int, perPage int) ([]model.Article, error) {
 	query := `SELECT id, blog_id, title, url, published_date, discovered_date, is_read, content, description, feed_summary, summary FROM articles WHERE 1=1`
 	var args []interface{}
 	if unreadOnly != nil {
@@ -357,6 +357,10 @@ func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, page int, perP
 	if blogID != nil {
 		query += " AND blog_id = ?"
 		args = append(args, *blogID)
+	}
+	if days > 0 {
+		query += " AND discovered_date >= datetime('now', '-' || ? || ' days')"
+		args = append(args, days)
 	}
 	query += " ORDER BY discovered_date DESC"
 

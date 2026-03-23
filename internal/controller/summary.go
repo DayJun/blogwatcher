@@ -67,8 +67,9 @@ type SummaryResult struct {
 }
 
 // GenerateAllSummaries generates summaries for all articles without one.
-func GenerateAllSummaries(ctx context.Context, db *storage.Database, client *llm.Client, force bool) []SummaryResult {
-	articles, err := db.ListArticles(nil, nil, 1, storage.NoPagination)
+// If days > 0, only processes articles discovered within the last N days.
+func GenerateAllSummaries(ctx context.Context, db *storage.Database, client *llm.Client, force bool, days int) []SummaryResult {
+	articles, err := db.ListArticles(nil, nil, days, 1, storage.NoPagination)
 	if err != nil {
 		return []SummaryResult{{Status: "error", Error: err}}
 	}

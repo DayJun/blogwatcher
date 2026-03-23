@@ -449,6 +449,7 @@ func newImportCommand() *cobra.Command {
 func newSummaryCommand() *cobra.Command {
 	var allFlag bool
 	var forceFlag bool
+	var daysFlag int
 
 	cmd := &cobra.Command{
 		Use:   "summary [article_id]",
@@ -471,7 +472,7 @@ func newSummaryCommand() *cobra.Command {
 			ctx := cmd.Context()
 
 			if allFlag {
-				return runSummaryAll(ctx, db, llmClient, forceFlag)
+				return runSummaryAll(ctx, db, llmClient, forceFlag, daysFlag)
 			}
 
 			if len(args) == 0 {
@@ -489,6 +490,7 @@ func newSummaryCommand() *cobra.Command {
 
 	cmd.Flags().BoolVar(&allFlag, "all", false, "Generate summaries for all articles without one")
 	cmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Regenerate even if summary exists")
+	cmd.Flags().IntVarP(&daysFlag, "days", "d", 0, "Only process articles discovered within the last N days (use with --all)")
 	return cmd
 }
 
@@ -504,8 +506,8 @@ func runSummarySingle(ctx context.Context, db *storage.Database, client *llm.Cli
 	return nil
 }
 
-func runSummaryAll(ctx context.Context, db *storage.Database, client *llm.Client, force bool) error {
-	articles, err := db.ListArticles(nil, nil, 1, storage.NoPagination)
+func runSummaryAll(ctx context.Context, db *storage.Database, client *llm.Client, force bool, days int) error {
+	articles, err := db.ListArticles(nil, nil, days, 1, storage.NoPagination)
 	if err != nil {
 		return err
 	}

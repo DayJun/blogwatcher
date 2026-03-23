@@ -122,7 +122,7 @@ func TestGetArticlesPagination(t *testing.T) {
 	}
 
 	// Mark some as read
-	articles, _ := db.ListArticles(nil, nil, 1, storage.NoPagination)
+	articles, _ := db.ListArticles(nil, nil, 0, 1, storage.NoPagination)
 	for _, a := range articles[:5] {
 		db.MarkArticleRead(a.ID)
 	}
