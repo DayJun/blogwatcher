@@ -250,3 +250,51 @@ func TestGetBlogStats(t *testing.T) {
 	assert.Equal(t, 5, stats.TotalArticles)
 	assert.Equal(t, 4, stats.UnreadArticles)
 }
+
+func TestGetBlogByID(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	blog, _ := AddBlog(db, "Test Blog", "https://test.com", "", "")
+
+	found, err := GetBlogByID(db, blog.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Test Blog", found.Name)
+
+	// Test not found
+	_, err = GetBlogByID(db, 999)
+	assert.IsType(t, BlogIDNotFoundError{}, err)
+}
+
+func TestRemoveBlogByID(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	blog, _ := AddBlog(db, "Test Blog", "https://test.com", "", "")
+
+	err := RemoveBlogByID(db, blog.ID)
+	require.NoError(t, err)
+
+	// Verify removed
+	found, _ := db.GetBlog(blog.ID)
+	assert.Nil(t, found)
+
+	// Test not found
+	err = RemoveBlogByID(db, 999)
+	assert.IsType(t, BlogIDNotFoundError{}, err)
+}
+
+func TestGetBlogsPaginated(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	AddBlog(db, "Alpha", "https://alpha.com", "", "")
+	AddBlog(db, "Beta", "https://beta.com", "", "")
+	AddBlog(db, "Gamma", "https://gamma.com", "", "")
+
+	result, err := GetBlogsPaginated(db, 1, 2, "")
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.Total)
+	assert.Equal(t, 2, result.TotalPages)
+	assert.Len(t, result.Blogs, 2)
+}

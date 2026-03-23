@@ -15,6 +15,15 @@ func (e BlogNotFoundError) Error() string {
 	return fmt.Sprintf("Blog '%s' not found", e.Name)
 }
 
+// BlogIDNotFoundError is returned when a blog is not found by ID.
+type BlogIDNotFoundError struct {
+	ID int64
+}
+
+func (e BlogIDNotFoundError) Error() string {
+	return fmt.Sprintf("Blog %d not found", e.ID)
+}
+
 type BlogAlreadyExistsError struct {
 	Field string
 	Value string
@@ -69,6 +78,36 @@ func RemoveBlog(db *storage.Database, name string) error {
 	}
 	_, err = db.RemoveBlog(blog.ID)
 	return err
+}
+
+// GetBlogByID retrieves a blog by its ID.
+func GetBlogByID(db *storage.Database, id int64) (*model.Blog, error) {
+	blog, err := db.GetBlog(id)
+	if err != nil {
+		return nil, err
+	}
+	if blog == nil {
+		return nil, BlogIDNotFoundError{ID: id}
+	}
+	return blog, nil
+}
+
+// RemoveBlogByID removes a blog by its ID.
+func RemoveBlogByID(db *storage.Database, id int64) error {
+	blog, err := db.GetBlog(id)
+	if err != nil {
+		return err
+	}
+	if blog == nil {
+		return BlogIDNotFoundError{ID: id}
+	}
+	_, err = db.RemoveBlog(id)
+	return err
+}
+
+// GetBlogsPaginated returns paginated blogs with optional name search.
+func GetBlogsPaginated(db *storage.Database, page, perPage int, search string) (storage.BlogListResult, error) {
+	return db.ListBlogsPaginated(page, perPage, search)
 }
 
 func UpdateBlog(db *storage.Database, id int64, name string, url string, feedURL string, scrapeSelector string) (model.Blog, error) {
@@ -203,6 +242,87 @@ func GetArticles(db *storage.Database, status string, blogName string, page int,
 		Page:       page,
 		PerPage:    perPage,
 		TotalPages: totalPages,
+	}, nil
+}
+
+// GetArticlesWithSearch returns articles with search filter.
+// Supports both blogName (string) and blogID (int64 pointer) filters.
+// If both are provided, blogName takes precedence.
+func GetArticlesWithSearch(db *storage.Database, status string, blogName string, blogID *int64, search string, page, perPage int) (*ArticlesResult, error) {
+	// Resolve blog name to ID if provided
+	var filterBlogID *int64
+	if blogName != "" {
+		blog, err := db.GetBlogByName(blogName)
+		if err != nil {
+			return nil, err
+		}
+		if blog == nil {
+			return nil, BlogNotFoundError{Name: blogName}
+		}
+		filterBlogID = &blog.ID
+	} else if blogID != nil {
+		// Verify blog exists
+		blog, err := db.GetBlog(*blogID)
+		if err != nil {
+			return nil, err
+		}
+		if blog == nil {
+			return nil, BlogIDNotFoundError{ID: *blogID}
+		}
+		filterBlogID = blogID
+	}
+
+	// Determine read status filter
+	var readFilter *bool
+	switch status {
+	case "unread":
+		unread := true
+		readFilter = &unread
+	case "read":
+		read := false
+		readFilter = &read
+	case "all":
+		readFilter = nil
+	default:
+		unread := true
+		readFilter = &unread
+	}
+
+	// Get total count
+	total, err := db.CountArticles(readFilter, filterBlogID, search)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get paginated articles
+	articles, err := db.ListArticles(readFilter, filterBlogID, 0, page, perPage, search)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get blog names
+	blogs, err := db.ListBlogs()
+	if err != nil {
+		return nil, err
+	}
+	blogNames := make(map[int64]string)
+	for _, b := range blogs {
+		blogNames[b.ID] = b.Name
+	}
+
+	// Calculate total pages
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	return &ArticlesResult{
+		Articles:   articles,
+		Total:      total,
+		Page:       page,
+		PerPage:    perPage,
+		TotalPages: totalPages,
+		BlogNames:  blogNames,
 	}, nil
 }
 
