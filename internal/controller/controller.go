@@ -32,6 +32,12 @@ func (e ArticleNotFoundError) Error() string {
 	return fmt.Sprintf("Article %d not found", e.ID)
 }
 
+// BlogStats contains article statistics for a blog.
+type BlogStats struct {
+	TotalArticles  int
+	UnreadArticles int
+}
+
 func AddBlog(db *storage.Database, name string, url string, feedURL string, scrapeSelector string) (model.Blog, error) {
 	if existing, err := db.GetBlogByName(name); err != nil {
 		return model.Blog{}, err
@@ -63,6 +69,62 @@ func RemoveBlog(db *storage.Database, name string) error {
 	}
 	_, err = db.RemoveBlog(blog.ID)
 	return err
+}
+
+func UpdateBlog(db *storage.Database, id int64, name string, url string, feedURL string, scrapeSelector string) (model.Blog, error) {
+	blog, err := db.GetBlog(id)
+	if err != nil {
+		return model.Blog{}, err
+	}
+	if blog == nil {
+		return model.Blog{}, BlogNotFoundError{Name: ""}
+	}
+
+	// Check for duplicate name if name changed
+	if name != "" && name != blog.Name {
+		if existing, err := db.GetBlogByName(name); err != nil {
+			return model.Blog{}, err
+		} else if existing != nil {
+			return model.Blog{}, BlogAlreadyExistsError{Field: "name", Value: name}
+		}
+	}
+
+	// Check for duplicate URL if URL changed
+	if url != "" && url != blog.URL {
+		if existing, err := db.GetBlogByURL(url); err != nil {
+			return model.Blog{}, err
+		} else if existing != nil {
+			return model.Blog{}, BlogAlreadyExistsError{Field: "URL", Value: url}
+		}
+	}
+
+	// Update fields (empty string means keep existing)
+	if name != "" {
+		blog.Name = name
+	}
+	if url != "" {
+		blog.URL = url
+	}
+	blog.FeedURL = feedURL
+	blog.ScrapeSelector = scrapeSelector
+
+	if err := db.UpdateBlog(*blog); err != nil {
+		return model.Blog{}, err
+	}
+	return *blog, nil
+}
+
+func GetBlogStats(db *storage.Database, blogID int64) (BlogStats, error) {
+	total, err := db.CountArticles(nil, &blogID)
+	if err != nil {
+		return BlogStats{}, err
+	}
+	unread := true
+	unreadCount, err := db.CountArticles(&unread, &blogID)
+	if err != nil {
+		return BlogStats{}, err
+	}
+	return BlogStats{TotalArticles: total, UnreadArticles: unreadCount}, nil
 }
 
 // ArticlesResult contains paginated articles and metadata.

@@ -7,6 +7,8 @@ import (
 
 	"github.com/Hyaxia/blogwatcher/internal/model"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAddBlogAndRemoveBlog(t *testing.T) {
@@ -213,4 +215,38 @@ func TestGetArticlesTotalPagesCalculation(t *testing.T) {
 	if len(result.Articles) != 5 {
 		t.Fatalf("expected 5 articles on page 3, got %d", len(result.Articles))
 	}
+}
+
+func TestUpdateBlog(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	blog, err := AddBlog(db, "Original", "https://example.com", "", "")
+	require.NoError(t, err)
+
+	updated, err := UpdateBlog(db, blog.ID, "New Name", "https://newurl.com", "https://feed.com/rss", "article a")
+	require.NoError(t, err)
+	assert.Equal(t, "New Name", updated.Name)
+	assert.Equal(t, "https://newurl.com", updated.URL)
+	assert.Equal(t, "https://feed.com/rss", updated.FeedURL)
+}
+
+func TestGetBlogStats(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	blog, err := AddBlog(db, "Test", "https://example.com", "", "")
+	require.NoError(t, err)
+
+	// Add some articles
+	for i := 0; i < 5; i++ {
+		_, err := db.AddArticle(model.Article{BlogID: blog.ID, Title: fmt.Sprintf("Article %d", i), URL: fmt.Sprintf("https://example.com/%d", i)})
+		require.NoError(t, err)
+	}
+	db.MarkArticleRead(1)
+
+	stats, err := GetBlogStats(db, blog.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 5, stats.TotalArticles)
+	assert.Equal(t, 4, stats.UnreadArticles)
 }
