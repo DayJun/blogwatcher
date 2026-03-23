@@ -411,7 +411,7 @@ func runArticlesList(db *storage.Database, showAll bool, showRead bool, blogName
 		perPage = 100
 	}
 
-	result, err := controller.GetArticles(db, status, blogName, page, perPage)
+	result, err := controller.GetArticles(db, status, blogName, page, perPage, "")
 	if err != nil {
 		printError(err)
 		return markError(err)
@@ -571,7 +571,7 @@ func newArticlesReadAllCommand() *cobra.Command {
 			}
 			defer db.Close()
 
-			result, err := controller.GetArticles(db, "unread", blogName, 1, 1000)
+			result, err := controller.GetArticles(db, "unread", blogName, 1, 1000, "")
 			if err != nil {
 				printError(err)
 				return markError(err)
@@ -851,7 +851,7 @@ func runSummarySingle(ctx context.Context, db *storage.Database, client *llm.Cli
 }
 
 func runSummaryAll(ctx context.Context, db *storage.Database, client *llm.Client, force bool, days int) error {
-	articles, err := db.ListArticles(nil, nil, days, 1, storage.NoPagination)
+	articles, err := db.ListArticles(nil, nil, days, 1, storage.NoPagination, "")
 	if err != nil {
 		return err
 	}

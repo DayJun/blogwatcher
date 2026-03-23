@@ -435,7 +435,7 @@ func (db *Database) GetExistingArticleURLs(urls []string) (map[string]struct{}, 
 // NoPagination is passed to ListArticles perPage parameter to return all records.
 const NoPagination = 0
 
-func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, days int, page int, perPage int) ([]model.Article, error) {
+func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, days int, page int, perPage int, search string) ([]model.Article, error) {
 	query := `SELECT id, blog_id, title, url, published_date, discovered_date, is_read, content, description, feed_summary, summary FROM articles WHERE 1=1`
 	var args []interface{}
 	if unreadOnly != nil {
@@ -452,6 +452,10 @@ func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, days int, page
 	if days > 0 {
 		query += " AND discovered_date >= datetime('now', '-' || ? || ' days')"
 		args = append(args, days)
+	}
+	if search != "" {
+		query += " AND title LIKE ?"
+		args = append(args, "%"+search+"%")
 	}
 	query += " ORDER BY discovered_date DESC"
 
@@ -484,7 +488,7 @@ func (db *Database) ListArticles(unreadOnly *bool, blogID *int64, days int, page
 	return articles, rows.Err()
 }
 
-func (db *Database) CountArticles(unreadOnly *bool, blogID *int64) (int, error) {
+func (db *Database) CountArticles(unreadOnly *bool, blogID *int64, search string) (int, error) {
 	query := `SELECT COUNT(*) FROM articles WHERE 1=1`
 	var args []interface{}
 	if unreadOnly != nil {
@@ -497,6 +501,10 @@ func (db *Database) CountArticles(unreadOnly *bool, blogID *int64) (int, error) 
 	if blogID != nil {
 		query += " AND blog_id = ?"
 		args = append(args, *blogID)
+	}
+	if search != "" {
+		query += " AND title LIKE ?"
+		args = append(args, "%"+search+"%")
 	}
 
 	row := db.conn.QueryRow(query, args...)

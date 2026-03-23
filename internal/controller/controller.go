@@ -115,12 +115,12 @@ func UpdateBlog(db *storage.Database, id int64, name string, url string, feedURL
 }
 
 func GetBlogStats(db *storage.Database, blogID int64) (BlogStats, error) {
-	total, err := db.CountArticles(nil, &blogID)
+	total, err := db.CountArticles(nil, &blogID, "")
 	if err != nil {
 		return BlogStats{}, err
 	}
 	unread := true
-	unreadCount, err := db.CountArticles(&unread, &blogID)
+	unreadCount, err := db.CountArticles(&unread, &blogID, "")
 	if err != nil {
 		return BlogStats{}, err
 	}
@@ -139,7 +139,7 @@ type ArticlesResult struct {
 
 // GetArticles retrieves paginated articles with filtering.
 // status: "unread", "read", or "all"
-func GetArticles(db *storage.Database, status string, blogName string, page int, perPage int) (*ArticlesResult, error) {
+func GetArticles(db *storage.Database, status string, blogName string, page int, perPage int, search string) (*ArticlesResult, error) {
 	var blogID *int64
 	if blogName != "" {
 		blog, err := db.GetBlogByName(blogName)
@@ -169,13 +169,13 @@ func GetArticles(db *storage.Database, status string, blogName string, page int,
 	}
 
 	// Get total count
-	total, err := db.CountArticles(readFilter, blogID)
+	total, err := db.CountArticles(readFilter, blogID, search)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get paginated articles
-	articles, err := db.ListArticles(readFilter, blogID, 0, page, perPage)
+	articles, err := db.ListArticles(readFilter, blogID, 0, page, perPage, search)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func MarkAllArticlesRead(db *storage.Database, blogName string) ([]model.Article
 	}
 
 	unread := true
-	articles, err := db.ListArticles(&unread, blogID, 0, 1, storage.NoPagination)
+	articles, err := db.ListArticles(&unread, blogID, 0, 1, storage.NoPagination, "")
 	if err != nil {
 		return nil, err
 	}

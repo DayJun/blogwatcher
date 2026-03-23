@@ -53,7 +53,7 @@ func TestDatabaseCreatesFileAndCRUD(t *testing.T) {
 		t.Fatalf("expected 2 articles, got %d", count)
 	}
 
-	list, err := db.ListArticles(nil, nil, 0, 1, NoPagination)
+	list, err := db.ListArticles(nil, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list articles: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestListArticlesFiltersAndOrdering(t *testing.T) {
 		t.Fatalf("mark read: %v", err)
 	}
 
-	all, err := db.ListArticles(nil, nil, 0, 1, NoPagination)
+	all, err := db.ListArticles(nil, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list articles: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestListArticlesFiltersAndOrdering(t *testing.T) {
 	}
 
 	unreadFilter := true
-	unreadArticles, err := db.ListArticles(&unreadFilter, nil, 0, 1, NoPagination)
+	unreadArticles, err := db.ListArticles(&unreadFilter, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list unread: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestListArticlesFiltersAndOrdering(t *testing.T) {
 	}
 
 	blogID := blogB.ID
-	filtered, err := db.ListArticles(nil, &blogID, 0, 1, NoPagination)
+	filtered, err := db.ListArticles(nil, &blogID, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list by blog: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestBulkInsertDuplicateRollbackAndEmpty(t *testing.T) {
 		t.Fatalf("expected bulk insert to fail on duplicate url")
 	}
 
-	articles, err := db.ListArticles(nil, nil, 0, 1, NoPagination)
+	articles, err := db.ListArticles(nil, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list articles: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestCountArticles(t *testing.T) {
 	}
 
 	// Count all
-	total, err := db.CountArticles(nil, nil)
+	total, err := db.CountArticles(nil, nil, "")
 	if err != nil {
 		t.Fatalf("count all: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestCountArticles(t *testing.T) {
 
 	// Count unread
 	unread := true
-	count, err := db.CountArticles(&unread, nil)
+	count, err := db.CountArticles(&unread, nil, "")
 	if err != nil {
 		t.Fatalf("count unread: %v", err)
 	}
@@ -426,7 +426,7 @@ func TestCountArticles(t *testing.T) {
 
 	// Count read
 	read := false
-	count, err = db.CountArticles(&read, nil)
+	count, err = db.CountArticles(&read, nil, "")
 	if err != nil {
 		t.Fatalf("count read: %v", err)
 	}
@@ -436,7 +436,7 @@ func TestCountArticles(t *testing.T) {
 
 	// Count by blog
 	blogID := blogA.ID
-	count, err = db.CountArticles(nil, &blogID)
+	count, err = db.CountArticles(nil, &blogID, "")
 	if err != nil {
 		t.Fatalf("count by blog: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestListArticlesPagination(t *testing.T) {
 	}
 
 	// Test pagination - page 1, perPage 2
-	page1, err := db.ListArticles(nil, nil, 0, 1, 2)
+	page1, err := db.ListArticles(nil, nil, 0, 1, 2, "")
 	if err != nil {
 		t.Fatalf("list page 1: %v", err)
 	}
@@ -487,7 +487,7 @@ func TestListArticlesPagination(t *testing.T) {
 	}
 
 	// Test pagination - page 2
-	page2, err := db.ListArticles(nil, nil, 0, 2, 2)
+	page2, err := db.ListArticles(nil, nil, 0, 2, 2, "")
 	if err != nil {
 		t.Fatalf("list page 2: %v", err)
 	}
@@ -499,7 +499,7 @@ func TestListArticlesPagination(t *testing.T) {
 	}
 
 	// Test pagination - page 3 (partial)
-	page3, err := db.ListArticles(nil, nil, 0, 3, 2)
+	page3, err := db.ListArticles(nil, nil, 0, 3, 2, "")
 	if err != nil {
 		t.Fatalf("list page 3: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestListArticlesPagination(t *testing.T) {
 	}
 
 	// Test pagination - beyond range
-	page4, err := db.ListArticles(nil, nil, 0, 4, 2)
+	page4, err := db.ListArticles(nil, nil, 0, 4, 2, "")
 	if err != nil {
 		t.Fatalf("list page 4: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestListArticlesNoPagination(t *testing.T) {
 	}
 
 	// perPage = 0 means no pagination (return all)
-	all, err := db.ListArticles(nil, nil, 0, 1, NoPagination)
+	all, err := db.ListArticles(nil, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
@@ -581,7 +581,7 @@ func TestListArticlesReadFilter(t *testing.T) {
 
 	// Filter: unread only - should return second article (not marked read)
 	unread := true
-	list, err := db.ListArticles(&unread, nil, 0, 1, NoPagination)
+	list, err := db.ListArticles(&unread, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list unread: %v", err)
 	}
@@ -591,7 +591,7 @@ func TestListArticlesReadFilter(t *testing.T) {
 
 	// Filter: read only - should return first article (marked read)
 	read := false
-	list, err = db.ListArticles(&read, nil, 0, 1, NoPagination)
+	list, err = db.ListArticles(&read, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list read: %v", err)
 	}
@@ -600,7 +600,7 @@ func TestListArticlesReadFilter(t *testing.T) {
 	}
 
 	// Filter: all (nil)
-	list, err = db.ListArticles(nil, nil, 0, 1, NoPagination)
+	list, err = db.ListArticles(nil, nil, 0, 1, NoPagination, "")
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
@@ -722,4 +722,32 @@ func TestListBlogsPaginated(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.Total) // Beta and Delta match
 	assert.Len(t, result.Blogs, 2)
+}
+
+func TestListArticlesWithSearch(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "blogwatcher.db")
+	db, err := OpenDatabase(path)
+	require.NoError(t, err)
+	defer db.Close()
+
+	blog, err := db.AddBlog(model.Blog{Name: "Test", URL: "https://test.com"})
+	require.NoError(t, err)
+
+	_, err = db.AddArticle(model.Article{BlogID: blog.ID, Title: "Go Programming Tips", URL: "https://test.com/1"})
+	require.NoError(t, err)
+	_, err = db.AddArticle(model.Article{BlogID: blog.ID, Title: "Python Tutorial", URL: "https://test.com/2"})
+	require.NoError(t, err)
+	_, err = db.AddArticle(model.Article{BlogID: blog.ID, Title: "Go Concurrency Guide", URL: "https://test.com/3"})
+	require.NoError(t, err)
+
+	// Test search - finds "Go Programming Tips" and "Go Concurrency Guide"
+	articles, err := db.ListArticles(nil, nil, 0, 1, 20, "go")
+	require.NoError(t, err)
+	assert.Len(t, articles, 2)
+
+	// Test count with search - finds "Python Tutorial"
+	count, err := db.CountArticles(nil, nil, "python")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
 }

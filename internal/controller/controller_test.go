@@ -76,7 +76,7 @@ func TestGetArticlesFilters(t *testing.T) {
 		t.Fatalf("add article: %v", err)
 	}
 
-	result, err := GetArticles(db, "unread", "", 1, 20)
+	result, err := GetArticles(db, "unread", "", 1, 20, "")
 	if err != nil {
 		t.Fatalf("get articles: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestGetArticlesFilters(t *testing.T) {
 		t.Fatalf("expected blog name")
 	}
 
-	if _, err := GetArticles(db, "unread", "Missing", 1, 20); err == nil {
+	if _, err := GetArticles(db, "unread", "Missing", 1, 20, ""); err == nil {
 		t.Fatalf("expected blog not found error")
 	}
 }
@@ -124,13 +124,13 @@ func TestGetArticlesPagination(t *testing.T) {
 	}
 
 	// Mark some as read
-	articles, _ := db.ListArticles(nil, nil, 0, 1, storage.NoPagination)
+	articles, _ := db.ListArticles(nil, nil, 0, 1, storage.NoPagination, "")
 	for _, a := range articles[:5] {
 		db.MarkArticleRead(a.ID)
 	}
 
 	// Test page 1, default perPage
-	result, err := GetArticles(db, "unread", "", 1, 20)
+	result, err := GetArticles(db, "unread", "", 1, 20, "")
 	if err != nil {
 		t.Fatalf("get articles: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestGetArticlesPagination(t *testing.T) {
 	}
 
 	// Test read filter
-	result, err = GetArticles(db, "read", "", 1, 20)
+	result, err = GetArticles(db, "read", "", 1, 20, "")
 	if err != nil {
 		t.Fatalf("get read articles: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestGetArticlesPagination(t *testing.T) {
 	}
 
 	// Test all filter
-	result, err = GetArticles(db, "all", "", 1, 20)
+	result, err = GetArticles(db, "all", "", 1, 20, "")
 	if err != nil {
 		t.Fatalf("get all articles: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestGetArticlesTotalPagesCalculation(t *testing.T) {
 	}
 
 	// 25 articles, perPage 10 = 3 pages
-	result, err := GetArticles(db, "all", "", 1, 10)
+	result, err := GetArticles(db, "all", "", 1, 10, "")
 	if err != nil {
 		t.Fatalf("get articles: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestGetArticlesTotalPagesCalculation(t *testing.T) {
 	}
 
 	// Page 2
-	result, err = GetArticles(db, "all", "", 2, 10)
+	result, err = GetArticles(db, "all", "", 2, 10, "")
 	if err != nil {
 		t.Fatalf("get articles page 2: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestGetArticlesTotalPagesCalculation(t *testing.T) {
 	}
 
 	// Page 3 (partial)
-	result, err = GetArticles(db, "all", "", 3, 10)
+	result, err = GetArticles(db, "all", "", 3, 10, "")
 	if err != nil {
 		t.Fatalf("get articles page 3: %v", err)
 	}
