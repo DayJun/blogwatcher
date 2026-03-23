@@ -34,8 +34,11 @@ Windows and Linux binaries are also available on the GitHub Releases page.
 # Initialize configuration (first time setup)
 blogwatcher init
 
-# Add a blog
-blogwatcher add "My Favorite Blog" https://example.com/blog
+# Add a blog (auto-discovers RSS feed and extracts name from feed title)
+blogwatcher blogs add https://example.com/blog
+
+# Add a blog with a custom name
+blogwatcher blogs add "My Favorite Blog" https://example.com/blog
 
 # Scan for new articles
 blogwatcher scan
@@ -83,14 +86,17 @@ Any OpenAI-compatible API is supported (OpenAI, Azure OpenAI, vLLM, local models
 ### Adding Blogs
 
 ```bash
-# Add a blog (auto-discovers RSS feed)
-blogwatcher add "My Favorite Blog" https://example.com/blog
+# Add a blog (auto-discovers RSS feed and extracts name from feed title)
+blogwatcher blogs add https://example.com/blog
+
+# Add a blog with a custom name
+blogwatcher blogs add "My Favorite Blog" https://example.com/blog
 
 # Add with explicit feed URL
-blogwatcher add "Tech Blog" https://techblog.com --feed-url https://techblog.com/rss.xml
+blogwatcher blogs add "Tech Blog" https://techblog.com --feed-url https://techblog.com/rss.xml
 
 # Add with HTML scraping selector (for blogs without feeds)
-blogwatcher add "No-RSS Blog" https://norss.com --scrape-selector "article h2 a"
+blogwatcher blogs add "No-RSS Blog" https://norss.com --scrape-selector "article h2 a"
 ```
 
 ### Importing Blogs
@@ -112,11 +118,19 @@ OPML files exported from RSS readers (like Feedly, Inoreader, NetNewsWire) are s
 # List all tracked blogs
 blogwatcher blogs
 
+# Show blog details with article stats
+blogwatcher blogs "Tech Blog"
+
+# Edit blog properties
+blogwatcher blogs edit "Tech Blog" --name "New Name"
+blogwatcher blogs edit "Tech Blog" --feed-url https://newfeed.com/rss.xml
+blogwatcher blogs edit "Tech Blog" --scrape-selector "article a"
+
 # Remove a blog (and all its articles)
-blogwatcher remove "My Favorite Blog"
+blogwatcher blogs remove "My Favorite Blog"
 
 # Remove without confirmation
-blogwatcher remove "My Favorite Blog" -y
+blogwatcher blogs remove "My Favorite Blog" -y
 ```
 
 ### Scanning for New Articles
@@ -135,27 +149,40 @@ blogwatcher scan "Tech Blog"
 # List unread articles
 blogwatcher articles
 
+# Show article details
+blogwatcher articles 42
+
 # List all articles (including read)
 blogwatcher articles --all
 
+# List only read articles
+blogwatcher articles --read
+
 # List articles from a specific blog
 blogwatcher articles --blog "Tech Blog"
+
+# Customize displayed fields
+blogwatcher articles --fields id,title,url
+blogwatcher articles --fields id,title,blog,published
+
+# Paginate results
+blogwatcher articles --page 2 --per-page 50
 ```
 
 ### Managing Read Status
 
 ```bash
 # Mark an article as read (use article ID from articles list)
-blogwatcher read 42
+blogwatcher articles read 42
 
 # Mark an article as unread
-blogwatcher unread 42
+blogwatcher articles unread 42
 
 # Mark all unread articles as read
-blogwatcher read-all
+blogwatcher articles read-all
 
 # Mark all unread articles as read for a blog (skip prompt)
-blogwatcher read-all --blog "Tech Blog" --yes
+blogwatcher articles read-all --blog "Tech Blog" --yes
 ```
 
 ### Generating Summaries
