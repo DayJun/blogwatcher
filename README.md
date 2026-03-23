@@ -115,22 +115,28 @@ OPML files exported from RSS readers (like Feedly, Inoreader, NetNewsWire) are s
 ### Managing Blogs
 
 ```bash
-# List all tracked blogs
+# List all tracked blogs (shows ID, name, URL)
 blogwatcher blogs
 
-# Show blog details with article stats
-blogwatcher blogs "Tech Blog"
+# Paginate results
+blogwatcher blogs --page 2 --per-page 20
 
-# Edit blog properties
-blogwatcher blogs edit "Tech Blog" --name "New Name"
-blogwatcher blogs edit "Tech Blog" --feed-url https://newfeed.com/rss.xml
-blogwatcher blogs edit "Tech Blog" --scrape-selector "article a"
+# Search blogs by name
+blogwatcher blogs --search "tech"
 
-# Remove a blog (and all its articles)
-blogwatcher blogs remove "My Favorite Blog"
+# Show blog details with article stats (use ID from list)
+blogwatcher blogs 1
+
+# Edit blog properties (use ID from list)
+blogwatcher blogs edit 1 --name "New Name"
+blogwatcher blogs edit 1 --feed-url https://newfeed.com/rss.xml
+blogwatcher blogs edit 1 --scrape-selector "article a"
+
+# Remove a blog and all its articles (use ID from list)
+blogwatcher blogs remove 1
 
 # Remove without confirmation
-blogwatcher blogs remove "My Favorite Blog" -y
+blogwatcher blogs remove 1 -y
 ```
 
 ### Scanning for New Articles
@@ -158,8 +164,14 @@ blogwatcher articles --all
 # List only read articles
 blogwatcher articles --read
 
-# List articles from a specific blog
+# List articles from a specific blog (by name)
 blogwatcher articles --blog "Tech Blog"
+
+# List articles from a specific blog (by ID)
+blogwatcher articles --blog-id 1
+
+# Search articles by title (partial match)
+blogwatcher articles --search "golang"
 
 # Customize displayed fields
 blogwatcher articles --fields id,title,url
