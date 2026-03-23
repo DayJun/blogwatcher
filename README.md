@@ -1,6 +1,6 @@
 # BlogWatcher
 
-A Go CLI tool to track blog articles, detect new posts, and manage read/unread status. Supports both RSS/Atom feeds and HTML scraping as fallback.
+A Go CLI tool to track blog articles, detect new posts, and manage read/unread status. Supports both RSS/Atom feeds and HTML scraping as fallback. Includes LLM-powered article summarization.
 
 ## Features
 
@@ -9,6 +9,7 @@ A Go CLI tool to track blog articles, detect new posts, and manage read/unread s
 -   **OPML Import** - Import blogs from OPML files exported from other RSS readers
 -   **Read/Unread Management** - Track which articles you've read
 -   **Blog Filtering** - View articles from specific blogs
+-   **LLM Summarization** - Generate article summaries using OpenAI-compatible APIs
 -   **Duplicate Prevention** - Never tracks the same article twice
 -   **Colored CLI Output** - User-friendly terminal interface
 
@@ -26,6 +27,56 @@ go build ./cmd/blogwatcher
 ```
 
 Windows and Linux binaries are also available on the GitHub Releases page.
+
+## Quick Start
+
+```bash
+# Initialize configuration (first time setup)
+blogwatcher init
+
+# Add a blog
+blogwatcher add "My Favorite Blog" https://example.com/blog
+
+# Scan for new articles
+blogwatcher scan
+
+# List unread articles
+blogwatcher articles
+
+# Generate summaries for today's articles
+blogwatcher summary --all --days 1
+```
+
+## Configuration
+
+Run `blogwatcher init` to set up LLM configuration interactively:
+
+```bash
+$ blogwatcher init
+
+Welcome to BlogWatcher!
+
+Let's set up your configuration.
+
+API Base URL [https://api.openai.com/v1]: https://your-llm-api.com/v1
+API Key: your-api-key
+Model [gpt-4o-mini]: gpt-4o
+
+✓ Configuration saved!
+  Config: ~/.blogwatcher/config.yaml
+  Database: ~/.blogwatcher/blogwatcher.db
+```
+
+Configuration is stored in `~/.blogwatcher/config.yaml`:
+
+```yaml
+llm:
+  base_url: https://api.openai.com/v1
+  api_key: your-api-key
+  model: gpt-4o-mini
+```
+
+Any OpenAI-compatible API is supported (OpenAI, Azure OpenAI, vLLM, local models, etc.).
 
 ## Usage
 
@@ -107,6 +158,24 @@ blogwatcher read-all
 blogwatcher read-all --blog "Tech Blog" --yes
 ```
 
+### Generating Summaries
+
+BlogWatcher can generate LLM-powered summaries for articles:
+
+```bash
+# Generate summary for a specific article
+blogwatcher summary 42
+
+# Generate summaries for all articles without one
+blogwatcher summary --all
+
+# Generate summaries for articles discovered today
+blogwatcher summary --all --days 1
+
+# Regenerate summaries (even if already exists)
+blogwatcher summary --all --force
+```
+
 ## How It Works
 
 ### Scanning Process
@@ -135,12 +204,14 @@ When RSS isn't available, provide a CSS selector that matches article links:
 --scrape-selector "#blog-posts a"     # Links inside blog-posts ID
 ```
 
-## Database
+## Data Storage
 
-BlogWatcher stores data in SQLite at `~/.blogwatcher/blogwatcher.db`:
+BlogWatcher stores data in `~/.blogwatcher/`:
 
--   **blogs** - Tracked blogs (name, URL, feed URL, scrape selector)
--   **articles** - Discovered articles (title, URL, dates, read status)
+-   **config.yaml** - LLM configuration (API key, base URL, model)
+-   **blogwatcher.db** - SQLite database with:
+    -   **blogs** - Tracked blogs (name, URL, feed URL, scrape selector)
+    -   **articles** - Discovered articles (title, URL, dates, read status, summaries)
 
 ## Development
 
