@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Hyaxia/blogwatcher/internal/controller"
+	"github.com/Hyaxia/blogwatcher/internal/llm"
 	"github.com/Hyaxia/blogwatcher/internal/model"
 	"github.com/Hyaxia/blogwatcher/internal/opml"
 	"github.com/Hyaxia/blogwatcher/internal/scanner"
@@ -441,6 +444,110 @@ func newImportCommand() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func newSummaryCommand() *cobra.Command {
+	var allFlag bool
+	var forceFlag bool
+
+	cmd := &cobra.Command{
+		Use:   "summary [article_id]",
+		Short: "Generate LLM summary for articles.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			db, err := storage.OpenDatabase("")
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			llmClient := llm.NewClient(llm.Config{})
+			if !llmClient.HasAPIKey() {
+				err := llm.MissingAPIKeyError{}
+				printError(err)
+				return markError(err)
+			}
+
+			ctx := cmd.Context()
+
+			if allFlag {
+				return runSummaryAll(ctx, db, llmClient, forceFlag)
+			}
+
+			if len(args) == 0 {
+				return fmt.Errorf("article_id is required unless --all is specified")
+			}
+
+			articleID, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+
+			return runSummarySingle(ctx, db, llmClient, articleID, forceFlag)
+		},
+	}
+
+	cmd.Flags().BoolVar(&allFlag, "all", false, "Generate summaries for all articles without one")
+	cmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Regenerate even if summary exists")
+	return cmd
+}
+
+func runSummarySingle(ctx context.Context, db *storage.Database, client *llm.Client, articleID int64, force bool) error {
+	article, err := controller.GenerateSummary(ctx, db, client, articleID, force)
+	if err != nil {
+		printError(err)
+		return markError(err)
+	}
+
+	color.New(color.FgCyan, color.Bold).Printf("Summary for article %d:\n", articleID)
+	fmt.Println(article.Summary)
+	return nil
+}
+
+func runSummaryAll(ctx context.Context, db *storage.Database, client *llm.Client, force bool) error {
+	articles, err := db.ListArticles(nil, nil, 1, storage.NoPagination)
+	if err != nil {
+		return err
+	}
+
+	var toProcess []model.Article
+	for _, a := range articles {
+		if a.Summary == "" || force {
+			toProcess = append(toProcess, a)
+		}
+	}
+
+	if len(toProcess) == 0 {
+		color.New(color.FgGreen).Println("All articles already have summaries.")
+		return nil
+	}
+
+	color.New(color.FgCyan).Printf("Processing %d articles...\n\n", len(toProcess))
+
+	generated := 0
+	skipped := 0
+	failed := 0
+
+	for _, article := range toProcess {
+		_, err := controller.GenerateSummary(ctx, db, client, article.ID, force)
+		if err != nil {
+			var noContentErr llm.NoContentError
+			if errors.As(err, &noContentErr) {
+				color.New(color.FgYellow).Printf("⚠ Article %d: No content available\n", article.ID)
+				skipped++
+			} else {
+				color.New(color.FgRed).Printf("✗ Article %d: %s\n", article.ID, err.Error())
+				failed++
+			}
+		} else {
+			color.New(color.FgGreen).Printf("✓ Article %d: Summary generated\n", article.ID)
+			generated++
+		}
+	}
+
+	fmt.Println()
+	color.New(color.FgCyan, color.Bold).Printf("Complete: %d generated, %d skipped, %d failed\n", generated, skipped, failed)
+	return nil
 }
 
 func printScanResult(result scanner.ScanResult) {
