@@ -19,4 +19,8 @@ type Article struct {
 	PublishedDate  *time.Time
 	DiscoveredDate *time.Time
 	IsRead         bool
+	Content        string // RSS content/encoded
+	Description    string // RSS description
+	FeedSummary    string // RSS/Atom summary
+	Summary        string // LLM-generated summary
 }
