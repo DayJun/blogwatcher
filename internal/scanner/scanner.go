@@ -181,6 +181,9 @@ func convertFeedArticles(blogID int64, articles []rss.FeedArticle) []model.Artic
 			URL:           article.URL,
 			PublishedDate: article.PublishedDate,
 			IsRead:        false,
+			Content:       article.Content,
+			Description:   article.Description,
+			FeedSummary:   article.FeedSummary,
 		})
 	}
 	return result

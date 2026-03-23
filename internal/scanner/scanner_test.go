@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/Hyaxia/blogwatcher/internal/model"
+	"github.com/Hyaxia/blogwatcher/internal/rss"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const sampleFeed = `<?xml version="1.0" encoding="UTF-8" ?>
@@ -161,4 +164,24 @@ func TestScanBlogRespectsExistingArticles(t *testing.T) {
 
 func ptrTime(value time.Time) *time.Time {
 	return &value
+}
+
+func TestConvertFeedArticlesPreservesContent(t *testing.T) {
+	published := time.Now()
+	feedArticles := []rss.FeedArticle{
+		{
+			Title:         "Test",
+			URL:           "https://example.com/1",
+			PublishedDate: &published,
+			Content:       "<p>Content</p>",
+			Description:   "Description",
+			FeedSummary:   "Summary",
+		},
+	}
+
+	result := convertFeedArticles(1, feedArticles)
+	require.Len(t, result, 1)
+	assert.Equal(t, "<p>Content</p>", result[0].Content)
+	assert.Equal(t, "Description", result[0].Description)
+	assert.Equal(t, "Summary", result[0].FeedSummary)
 }
