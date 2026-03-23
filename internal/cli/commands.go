@@ -845,8 +845,8 @@ func runSummarySingle(ctx context.Context, db *storage.Database, client *llm.Cli
 		return markError(err)
 	}
 
-	color.New(color.FgCyan, color.Bold).Printf("Summary for article %d:\n", articleID)
-	fmt.Println(article.Summary)
+	fmt.Printf("Title: %s\n\n", article.Title)
+	fmt.Printf("Summary: %s\n", article.Summary)
 	return nil
 }
 
@@ -868,8 +868,6 @@ func runSummaryAll(ctx context.Context, db *storage.Database, client *llm.Client
 		return nil
 	}
 
-	color.New(color.FgCyan).Printf("Processing %d articles...\n\n", len(toProcess))
-
 	generated := 0
 	skipped := 0
 	failed := 0
@@ -886,7 +884,6 @@ func runSummaryAll(ctx context.Context, db *storage.Database, client *llm.Client
 				failed++
 			}
 		} else {
-			color.New(color.FgGreen).Printf("✓ Article %d: Summary generated\n", article.ID)
 			generated++
 		}
 	}
