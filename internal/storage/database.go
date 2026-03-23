@@ -437,7 +437,7 @@ func (db *Database) MarkArticleUnread(id int64) (bool, error) {
 }
 
 func (db *Database) UpdateArticleSummary(id int64, summary string) error {
-	_, err := db.conn.Exec(`UPDATE articles SET summary = ? WHERE id = ?`, summary, id)
+	_, err := db.conn.Exec(`UPDATE articles SET summary = ? WHERE id = ?`, nullIfEmpty(summary), id)
 	return err
 }
 
