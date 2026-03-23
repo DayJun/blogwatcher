@@ -184,3 +184,26 @@ func IsFeedError(err error) bool {
 	var parseErr FeedParseError
 	return errors.As(err, &parseErr)
 }
+
+// GetFeedTitle fetches and extracts the title from an RSS/Atom feed.
+// Returns the feed title (trimmed) on success, or an empty string if the
+// feed has no title. Returns FeedParseError for network or parse failures.
+func GetFeedTitle(feedURL string, timeout time.Duration) (string, error) {
+	client := &http.Client{Timeout: timeout}
+	response, err := client.Get(feedURL)
+	if err != nil {
+		return "", FeedParseError{Message: fmt.Sprintf("failed to fetch feed: %v", err)}
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", FeedParseError{Message: fmt.Sprintf("failed to fetch feed: status %d", response.StatusCode)}
+	}
+
+	parser := gofeed.NewParser()
+	feed, err := parser.Parse(response.Body)
+	if err != nil {
+		return "", FeedParseError{Message: fmt.Sprintf("failed to parse feed: %v", err)}
+	}
+
+	return strings.TrimSpace(feed.Title), nil
+}

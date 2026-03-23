@@ -93,3 +93,28 @@ func TestParseFeedWithContent(t *testing.T) {
 	assert.Equal(t, "Short description", articles[0].Description)
 	assert.Contains(t, articles[0].Content, "Full content here")
 }
+
+func TestGetFeedTitle(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(`<?xml version="1.0"?>
+<rss><channel><title>Test Feed Title</title></channel></rss>`))
+	}))
+	defer server.Close()
+
+	title, err := GetFeedTitle(server.URL, 10*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, "Test Feed Title", title)
+}
+
+func TestGetFeedTitleNoTitle(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(`<?xml version="1.0"?><rss><channel></channel></rss>`))
+	}))
+	defer server.Close()
+
+	title, err := GetFeedTitle(server.URL, 10*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, "", title)
+}
