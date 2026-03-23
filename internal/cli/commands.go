@@ -24,13 +24,17 @@ import (
 )
 
 func newBlogsCommand() *cobra.Command {
+	var page int
+	var perPage int
+	var search string
+
 	cmd := &cobra.Command{
-		Use:   "blogs [name]",
+		Use:   "blogs [id]",
 		Short: "Manage tracked blogs.",
 		Long: `Manage tracked blogs.
 
 Without arguments, lists all tracked blogs.
-With a blog name argument, shows detailed information about that blog.`,
+With a blog ID argument, shows detailed information about that blog.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := RequireConfig(); err != nil {
@@ -45,11 +49,15 @@ With a blog name argument, shows detailed information about that blog.`,
 			defer db.Close()
 
 			if len(args) == 0 {
-				return runBlogsList(db)
+				return runBlogsList(db, page, perPage, search)
 			}
 			return runBlogsShow(db, args[0])
 		},
 	}
+
+	cmd.Flags().IntVarP(&page, "page", "p", 1, "Page number")
+	cmd.Flags().IntVarP(&perPage, "per-page", "P", 20, "Blogs per page (max 100)")
+	cmd.Flags().StringVarP(&search, "search", "s", "", "Filter by blog name (partial match)")
 
 	cmd.AddCommand(newBlogsAddCommand())
 	cmd.AddCommand(newBlogsEditCommand())
@@ -58,40 +66,66 @@ With a blog name argument, shows detailed information about that blog.`,
 	return cmd
 }
 
-func runBlogsList(db *storage.Database) error {
-	blogs, err := db.ListBlogs()
-	if err != nil {
-		return err
+func runBlogsList(db *storage.Database, page, perPage int, search string) error {
+	// Validate pagination
+	if page < 1 {
+		page = 1
 	}
-	if len(blogs) == 0 {
-		fmt.Println("No blogs tracked yet. Use 'blogwatcher blogs add' to add one.")
+	if perPage < 1 {
+		perPage = 20
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+
+	result, err := controller.GetBlogsPaginated(db, page, perPage, search)
+	if err != nil {
+		printError(err)
+		return markError(err)
+	}
+
+	if result.Total == 0 {
+		if search != "" {
+			color.New(color.FgCyan, color.Bold).Printf("No blogs found matching '%s'\n", search)
+		} else {
+			fmt.Println("No blogs tracked yet. Use 'blogwatcher blogs add' to add one.")
+		}
 		return nil
 	}
-	color.New(color.FgCyan, color.Bold).Printf("Tracked blogs (%d):\n\n", len(blogs))
-	for _, blog := range blogs {
-		color.New(color.FgWhite, color.Bold).Printf("  %s\n", blog.Name)
-		fmt.Printf("    URL: %s\n", blog.URL)
+
+	label := "Tracked blogs"
+	if search != "" {
+		label = fmt.Sprintf("Blogs matching '%s'", search)
+	}
+	color.New(color.FgCyan, color.Bold).Printf("%s (page %d/%d, %d total):\n\n", label, result.Page, result.TotalPages, result.Total)
+
+	for _, blog := range result.Blogs {
+		color.New(color.FgWhite, color.Bold).Printf("  [%d] %s\n", blog.ID, blog.Name)
+		fmt.Printf("       URL: %s\n", blog.URL)
 		if blog.FeedURL != "" {
-			fmt.Printf("    Feed: %s\n", blog.FeedURL)
-		}
-		if blog.ScrapeSelector != "" {
-			fmt.Printf("    Selector: %s\n", blog.ScrapeSelector)
+			fmt.Printf("       Feed: %s\n", blog.FeedURL)
+		} else {
+			fmt.Println("       Feed: (auto-discovered)")
 		}
 		if blog.LastScanned != nil {
-			fmt.Printf("    Last scanned: %s\n", blog.LastScanned.Format("2006-01-02 15:04"))
+			fmt.Printf("       Last scanned: %s\n", blog.LastScanned.Format("2006-01-02 15:04"))
+		} else {
+			fmt.Println("       Last scanned: never")
 		}
 		fmt.Println()
 	}
 	return nil
 }
 
-func runBlogsShow(db *storage.Database, name string) error {
-	blog, err := db.GetBlogByName(name)
+func runBlogsShow(db *storage.Database, idStr string) error {
+	blogID, err := parseID(idStr)
 	if err != nil {
-		return err
+		printError(fmt.Errorf("Invalid blog ID: %s", idStr))
+		return markError(err)
 	}
-	if blog == nil {
-		err := fmt.Errorf("Blog '%s' not found", name)
+
+	blog, err := controller.GetBlogByID(db, blogID)
+	if err != nil {
 		printError(err)
 		return markError(err)
 	}
@@ -101,18 +135,25 @@ func runBlogsShow(db *storage.Database, name string) error {
 		return err
 	}
 
-	color.New(color.FgCyan, color.Bold).Printf("Blog: %s\n\n", blog.Name)
-	fmt.Printf("  URL: %s\n", blog.URL)
+	fmt.Printf("Blog: %s\n", blog.Name)
+	fmt.Printf("ID: %d\n", blog.ID)
+	fmt.Printf("URL: %s\n", blog.URL)
 	if blog.FeedURL != "" {
-		fmt.Printf("  Feed: %s\n", blog.FeedURL)
+		fmt.Printf("Feed: %s\n", blog.FeedURL)
+	} else {
+		fmt.Println("Feed: (auto-discovered)")
 	}
 	if blog.ScrapeSelector != "" {
-		fmt.Printf("  Selector: %s\n", blog.ScrapeSelector)
+		fmt.Printf("Selector: %s\n", blog.ScrapeSelector)
+	} else {
+		fmt.Println("Selector: (none)")
 	}
 	if blog.LastScanned != nil {
-		fmt.Printf("  Last scanned: %s\n", blog.LastScanned.Format("2006-01-02 15:04"))
+		fmt.Printf("Last scanned: %s\n", blog.LastScanned.Format("2006-01-02 15:04"))
+	} else {
+		fmt.Println("Last scanned: never")
 	}
-	fmt.Printf("  Articles: %d total, %d unread\n", stats.TotalArticles, stats.UnreadArticles)
+	fmt.Printf("Articles: %d total, %d unread\n", stats.TotalArticles, stats.UnreadArticles)
 	return nil
 }
 
@@ -186,8 +227,8 @@ func newBlogsEditCommand() *cobra.Command {
 	var scrapeSelector string
 
 	cmd := &cobra.Command{
-		Use:   "edit <blog_name>",
-		Short: "Edit blog properties.",
+		Use:   "edit <id>",
+		Short: "Edit a tracked blog.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := RequireConfig(); err != nil {
@@ -195,43 +236,38 @@ func newBlogsEditCommand() *cobra.Command {
 				return markError(err)
 			}
 
-			blogName := args[0]
+			blogID, err := parseID(args[0])
+			if err != nil {
+				printError(fmt.Errorf("Invalid blog ID: %s", args[0]))
+				return markError(err)
+			}
+
 			db, err := storage.OpenDatabase("")
 			if err != nil {
 				return err
 			}
 			defer db.Close()
 
-			blog, err := db.GetBlogByName(blogName)
-			if err != nil {
-				return err
-			}
-			if blog == nil {
-				err := fmt.Errorf("Blog '%s' not found", blogName)
-				printError(err)
-				return markError(err)
-			}
-
-			updated, err := controller.UpdateBlog(db, blog.ID, name, url, feedURL, scrapeSelector)
+			_, err = controller.UpdateBlog(db, blogID, name, url, feedURL, scrapeSelector)
 			if err != nil {
 				printError(err)
 				return markError(err)
 			}
-			color.New(color.FgGreen).Printf("Updated blog '%s'\n", updated.Name)
+			color.New(color.FgGreen).Printf("Blog %d updated.\n", blogID)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "New blog name")
 	cmd.Flags().StringVar(&url, "url", "", "New blog URL")
-	cmd.Flags().StringVar(&feedURL, "feed-url", "", "RSS/Atom feed URL")
-	cmd.Flags().StringVar(&scrapeSelector, "scrape-selector", "", "CSS selector for HTML scraping")
+	cmd.Flags().StringVar(&feedURL, "feed-url", "", "New feed URL")
+	cmd.Flags().StringVar(&scrapeSelector, "scrape-selector", "", "New scrape selector")
 	return cmd
 }
 
 func newBlogsRemoveCommand() *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "remove <name>",
+		Use:   "remove <id>",
 		Short: "Remove a blog from tracking.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -240,9 +276,31 @@ func newBlogsRemoveCommand() *cobra.Command {
 				return markError(err)
 			}
 
-			name := args[0]
+			blogID, err := parseID(args[0])
+			if err != nil {
+				printError(fmt.Errorf("Invalid blog ID: %s", args[0]))
+				return markError(err)
+			}
+
+			db, err := storage.OpenDatabase("")
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			// Get blog name for confirmation message
+			blog, err := db.GetBlog(blogID)
+			if err != nil {
+				return err
+			}
+			if blog == nil {
+				err := controller.BlogIDNotFoundError{ID: blogID}
+				printError(err)
+				return markError(err)
+			}
+
 			if !yes {
-				confirmed, err := confirm(fmt.Sprintf("Remove blog '%s' and all its articles?", name))
+				confirmed, err := confirm(fmt.Sprintf("Remove blog '%s' (ID: %d) and all its articles?", blog.Name, blogID))
 				if err != nil {
 					return err
 				}
@@ -250,16 +308,12 @@ func newBlogsRemoveCommand() *cobra.Command {
 					return nil
 				}
 			}
-			db, err := storage.OpenDatabase("")
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-			if err := controller.RemoveBlog(db, name); err != nil {
+
+			if err := controller.RemoveBlogByID(db, blogID); err != nil {
 				printError(err)
 				return markError(err)
 			}
-			color.New(color.FgGreen).Printf("Removed blog '%s'\n", name)
+			color.New(color.FgGreen).Printf("Removed blog '%s' (ID: %d)\n", blog.Name, blogID)
 			return nil
 		},
 	}

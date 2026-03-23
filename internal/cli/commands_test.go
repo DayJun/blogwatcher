@@ -156,7 +156,7 @@ func TestBlogsShow(t *testing.T) {
 	db := setupTestDBAtPath(t, defaultTestDBPath(t))
 	defer db.Close()
 
-	controller.AddBlog(db, "Test Blog", "https://test.com", "https://test.com/feed", "")
+	blog, _ := controller.AddBlog(db, "Test Blog", "https://test.com", "https://test.com/feed", "")
 
 	// Capture stdout
 	old := os.Stdout
@@ -164,7 +164,7 @@ func TestBlogsShow(t *testing.T) {
 	os.Stdout = w
 
 	cmd := newBlogsCommand()
-	cmd.SetArgs([]string{"Test Blog"})
+	cmd.SetArgs([]string{fmt.Sprintf("%d", blog.ID)})
 	err := cmd.Execute()
 
 	w.Close()
@@ -294,4 +294,125 @@ func TestArticlesRead(t *testing.T) {
 
 	updated, _ := db.GetArticle(article.ID)
 	assert.True(t, updated.IsRead)
+}
+
+func TestBlogsListPaginated(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	controller.AddBlog(db, "Alpha", "https://alpha.com", "", "")
+	controller.AddBlog(db, "Beta", "https://beta.com", "", "")
+	controller.AddBlog(db, "Gamma", "https://gamma.com", "", "")
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newBlogsCommand()
+	cmd.SetArgs([]string{"--per-page", "2"})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	// Check pagination: with per-page=2, only first 2 blogs appear on page 1
+	// URLs are printed with fmt.Printf so they're captured
+	assert.Contains(t, buf.String(), "https://alpha.com")
+	assert.Contains(t, buf.String(), "https://beta.com")
+	assert.NotContains(t, buf.String(), "https://gamma.com") // Should not appear on page 1
+}
+
+func TestBlogsListSearch(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	controller.AddBlog(db, "Alpha Blog", "https://alpha.com", "", "")
+	controller.AddBlog(db, "Beta Site", "https://beta.com", "", "")
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newBlogsCommand()
+	cmd.SetArgs([]string{"--search", "blog"})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	// Check for URL which is printed with fmt.Printf
+	assert.Contains(t, buf.String(), "https://alpha.com")
+	assert.NotContains(t, buf.String(), "https://beta.com")
+}
+
+func TestBlogsShowByID(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := controller.AddBlog(db, "Test Blog", "https://test.com", "https://test.com/feed", "")
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newBlogsCommand()
+	cmd.SetArgs([]string{fmt.Sprintf("%d", blog.ID)})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	// Check for non-colored output (URL and ID are printed with fmt.Printf)
+	assert.Contains(t, buf.String(), "https://test.com")
+	assert.Contains(t, buf.String(), fmt.Sprintf("ID: %d", blog.ID))
+}
+
+func TestBlogsEditByID(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := controller.AddBlog(db, "Original", "https://test.com", "", "")
+
+	cmd := newBlogsCommand()
+	cmd.SetArgs([]string{"edit", fmt.Sprintf("%d", blog.ID), "--name", "Updated"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	updated, _ := db.GetBlog(blog.ID)
+	assert.Equal(t, "Updated", updated.Name)
+}
+
+func TestBlogsRemoveByID(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := controller.AddBlog(db, "Test Blog", "https://test.com", "", "")
+
+	cmd := newBlogsCommand()
+	cmd.SetArgs([]string{"remove", fmt.Sprintf("%d", blog.ID), "--yes"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	removed, _ := db.GetBlog(blog.ID)
+	assert.Nil(t, removed)
 }
