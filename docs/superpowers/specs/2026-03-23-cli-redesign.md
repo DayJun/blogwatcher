@@ -24,30 +24,114 @@
 ### New Command Structure
 
 ```
-init                     # 初始化配置
-scan                     # 扫描新文章
-import <file>            # 导入 OPML
-summary [id]             # 生成摘要
+init                     # Initialize configuration
+scan                     # Scan for new articles
+import <file>            # Import from OPML
+summary [id]             # Generate LLM summary
 
-blogs                    # 列出博客
-blogs <name>             # 博客详情
-blogs add <url>          # 添加博客（自动命名）
-blogs add <name> <url>   # 添加博客（指定名称）
-blogs edit <name>        # 编辑博客
-blogs remove <name>      # 删除博客
+blogs                    # List blogs
+blogs <name>             # Show blog details
+blogs add <url>          # Add blog (auto-name)
+blogs add <name> <url>   # Add blog (custom name)
+blogs edit <name>        # Edit blog
+blogs remove <name>      # Remove blog
 
-articles                 # 列出文章
-articles <id>            # 文章详情
-articles read <id>       # 标记已读
-articles unread <id>     # 标记未读
-articles read-all        # 全部标记已读
+articles                 # List articles
+articles <id>            # Show article details
+articles read <id>       # Mark as read
+articles unread <id>     # Mark as unread
+articles read-all        # Mark all as read
 ```
+
+---
+
+## Pre-requisite State
+
+All commands except `init` require configuration to be initialized.
+
+**When not initialized (config.yaml missing or empty):**
+```
+Error: Not configured. Run 'blogwatcher init' first.
+```
+
+**When database doesn't exist:**
+- Automatically created on first use
+- No error needed
+
+---
+
+## Error Handling
+
+### Common Errors (all commands)
+
+| Error | Message | Exit Code |
+|-------|---------|-----------|
+| Not configured | `Error: Not configured. Run 'blogwatcher init' first.` | 1 |
+| Network timeout | `Error: Request timeout after 30s` | 1 |
+| Invalid URL format | `Error: Invalid URL: <url>` | 1 |
+
+### blogs Errors
+
+| Command | Condition | Message |
+|---------|-----------|---------|
+| `blogs <name>` | Blog not found | `Error: Blog '<name>' not found` |
+| `blogs add` | Auto-name failed (no feed title) | `Error: Could not extract name from feed. Please provide a name.` |
+| `blogs add` | Duplicate name | `Error: Blog with name '<name>' already exists` |
+| `blogs add` | Duplicate URL | `Error: Blog with URL '<url>' already exists` |
+| `blogs add` | Feed fetch failed | `Error: Failed to fetch feed: <reason>` |
+| `blogs add` | Invalid URL | `Error: Invalid URL: <url>` |
+| `blogs edit` | Blog not found | `Error: Blog '<name>' not found` |
+| `blogs edit` | Duplicate new name | `Error: Blog with name '<name>' already exists` |
+| `blogs remove` | Blog not found | `Error: Blog '<name>' not found` |
+
+### articles Errors
+
+| Command | Condition | Message |
+|---------|-----------|---------|
+| `articles <id>` | Article not found | `Error: Article <id> not found` |
+| `articles read <id>` | Article not found | `Error: Article <id> not found` |
+| `articles read <id>` | Already read | `Article <id> is already marked as read.` (success, no error) |
+| `articles unread <id>` | Already unread | `Article <id> is already marked as unread.` (success, no error) |
+| `articles read-all` | No unread articles | `No unread articles to mark as read.` (success, no error) |
+| `articles read-all --blog <name>` | Blog not found | `Error: Blog '<name>' not found` |
+| `articles --blog <name>` | Blog not found | `Error: Blog '<name>' not found` |
+| `articles --per-page 0` | Invalid value | Auto-corrected to 20 (default) |
+| `articles --per-page -5` | Invalid value | Auto-corrected to 20 (default) |
+| `articles --per-page 150` | Over max | Auto-corrected to 100 (max) |
+
+### scan Errors
+
+| Condition | Message |
+|-----------|---------|
+| No blogs tracked | `No blogs tracked yet. Use 'blogwatcher blogs add' to add one.` |
+| Blog not found | `Error: Blog '<name>' not found` |
+| Feed parse failed | Shown in result per-blog, not as global error |
+| Network failure | Shown in result per-blog, not as global error |
+
+### import Errors
+
+| Condition | Message |
+|-----------|---------|
+| File not found | `Error: File not found: <path>` |
+| Invalid OPML | `Error: Failed to parse OPML: <reason>` |
+| Empty OPML | `No feeds found in OPML file.` (success, no error) |
+
+### summary Errors
+
+| Condition | Message |
+|-----------|---------|
+| Not configured (no API key) | `Error: Not configured. Run 'blogwatcher init' first.` |
+| Article not found | `Error: Article <id> not found` |
+| No content available | Skipped with warning, not an error |
+| API rate limit | `✗ Article <id>: API error: rate limit exceeded` |
+| API error | `✗ Article <id>: API error: <message>` |
+| No articles to process | `All articles already have summaries.` (success, no error) |
 
 ---
 
 ## Command Details
 
-### init (unchanged)
+### init
 
 Initialize configuration interactively.
 
@@ -63,9 +147,13 @@ Prompts for:
 Creates:
   - ~/.blogwatcher/config.yaml
   - ~/.blogwatcher/blogwatcher.db
+
+Errors:
+  - If already configured: "Configuration already exists at ~/.blogwatcher/config.yaml"
+  - Empty API key: "API Key is required."
 ```
 
-### scan (unchanged)
+### scan
 
 Scan blogs for new articles.
 
@@ -73,18 +161,44 @@ Scan blogs for new articles.
 Usage:
   blogwatcher scan [blog_name] [flags]
 
+Arguments:
+  blog_name    Optional. Scan only this blog. If omitted, scan all blogs.
+
 Flags:
   -s, --silent       Only output "scan done" when complete
-  -w, --workers num  Concurrent workers (default: 8)
+  -w, --workers num  Concurrent workers when scanning all (default: 8, min: 1, max: 20)
+
+Output (non-silent):
+  Scanning 3 blog(s)...
+
+    Blog Name
+      Source: RSS | Found: 10 | New: 3
+
+    Another Blog
+      Error: Failed to fetch feed: connection timeout
+
+  Found 3 new article(s) total!
 ```
 
-### import (unchanged)
+### import
 
 Import blogs from OPML file.
 
 ```
 Usage:
   blogwatcher import <file.opml>
+
+Arguments:
+  file.opml    Required. Path to OPML file.
+
+Output:
+  Importing from feeds.opml...
+
+  ✓ Imported: "Tech Blog"
+  ⚠ Skipped "Duplicate": Blog with URL already exists
+  ✗ Failed: "Bad Feed" - Invalid feed URL
+
+  Import complete: 5 imported, 2 skipped, 1 failed
 ```
 
 ### summary
@@ -94,21 +208,32 @@ Generate LLM summaries for articles.
 ```
 Usage:
   blogwatcher summary [id] [flags]
+  blogwatcher summary --all [flags]
+
+Arguments:
+  id           Article ID. Required unless --all is specified.
 
 Flags:
       --all         Generate for all articles without summary
-  -d, --days num    Only process articles discovered within last N days (with --all)
+  -d, --days num    Only process articles discovered within last N days
+                    Must be used with --all. Ignored without --all.
+                    Default: 0 (no filter)
   -f, --force       Regenerate even if summary exists
 
-Behavior changes:
-  - summary <id>: Output "Title: ...\n\nSummary: ..."
-  - summary --all: Only show failures/errors, then summary counts
+Output for single article:
+  Title: Understanding Go Concurrency
+
+  Summary: This article introduces Go's concurrency model...
 
 Output for --all:
+  Only shows failures and summary count, not success lines.
+
   ⚠ Article 42: No content available
   ✗ Article 43: API error: rate limit exceeded
 
   Complete: 15 generated, 2 skipped, 1 failed
+
+  (If all succeed, no per-article lines shown)
 ```
 
 ---
@@ -119,39 +244,45 @@ Manage tracked blogs.
 
 ```
 Usage:
-  blogwatcher blogs [flags]           # 列表
-  blogwatcher blogs <name>            # 详情
-  blogwatcher blogs add <url>         # 添加（自动命名）
-  blogwatcher blogs add <name> <url>  # 添加（指定名称）
-  blogwatcher blogs edit <name>       # 编辑
-  blogwatcher blogs remove <name>     # 删除
+  blogwatcher blogs                    # List all blogs
+  blogwatcher blogs <name>             # Show blog details
+  blogwatcher blogs add <url>          # Add with auto-name
+  blogwatcher blogs add <name> <url>   # Add with custom name
+  blogwatcher blogs edit <name>        # Edit blog
+  blogwatcher blogs remove <name>      # Remove blog
 
 Add flags:
-      --feed-url url         RSS/Atom feed URL (auto-discovered if not provided)
+      --feed-url url         RSS/Atom feed URL (auto-discovered from <url> if not provided)
       --scrape-selector sel  CSS selector for HTML scraping fallback
 
 Edit flags:
-      --name name            New name
-      --feed-url url         New feed URL
-      --scrape-selector sel  New scrape selector
+      --name name            New blog name
+      --feed-url url         New feed URL (set to "" to clear)
+      --scrape-selector sel  New scrape selector (set to "" to clear)
 
 Remove flags:
-  -y, --yes                  Skip confirmation
-
-Examples:
-  blogwatcher blogs                                    # List all blogs
-  blogwatcher blogs "Tech Blog"                        # Show details
-  blogwatcher blogs add https://example.com            # Add with auto name
-  blogwatcher blogs add "My Blog" https://example.com  # Add with custom name
-  blogwatcher blogs add https://example.com --feed-url https://example.com/rss.xml
-  blogwatcher blogs edit "Tech Blog" --name "Tech News"
-  blogwatcher blogs remove "Old Blog" -y
+  -y, --yes                  Skip confirmation prompt
 ```
 
 **blogs add auto-naming logic:**
-1. If `--feed-url` provided: fetch feed, extract `<title>` as blog name
-2. If feed has no title or fetch fails: error, user must provide name
-3. If name provided as positional arg: use that (no auto-extraction)
+1. If `--feed-url` provided or discovered: fetch feed, extract `<title>` as blog name
+2. If feed has no title or fetch fails: error, user must provide name as positional arg
+3. If name provided as positional arg: use that (skip auto-extraction)
+
+**blogs list output:**
+```
+Tracked blogs (3):
+
+  Tech Blog
+    URL: https://example.com
+    Feed: https://example.com/rss.xml
+    Last scanned: 2024-01-15 10:30
+
+  Another Blog
+    URL: https://another.com
+    Feed: (auto-discovered)
+    Last scanned: never
+```
 
 **blogs <name> output:**
 ```
@@ -163,6 +294,17 @@ Last scanned: 2024-01-15 10:30
 Articles: 42 total, 5 unread
 ```
 
+**blogs edit <name> output:**
+```
+Blog 'Tech Blog' updated.
+```
+
+**blogs remove <name> output:**
+```
+Remove blog 'Tech Blog' and all its articles? [y/N]: y
+Removed blog 'Tech Blog'
+```
+
 ---
 
 ### articles
@@ -171,11 +313,11 @@ List and manage articles.
 
 ```
 Usage:
-  blogwatcher articles [flags]          # 列表
-  blogwatcher articles <id> [flags]     # 详情
-  blogwatcher articles read <id>        # 标记已读
-  blogwatcher articles unread <id>      # 标记未读
-  blogwatcher articles read-all [flags] # 全部已读
+  blogwatcher articles [flags]          # List articles
+  blogwatcher articles <id> [flags]     # Show article details
+  blogwatcher articles read <id>        # Mark as read
+  blogwatcher articles unread <id>      # Mark as unread
+  blogwatcher articles read-all [flags] # Mark all as read
 
 Filtering flags:
   -a, --all             Show all articles (including read)
@@ -191,25 +333,39 @@ Output flags:
                                          read, content
 
 Pagination flags:
-  -p, --page num        Page number (default: 1)
-  -P, --per-page num    Articles per page, max 100 (default: 20)
+  -p, --page num        Page number (default: 1, min: 1)
+  -P, --per-page num    Articles per page (default: 20, min: 1, max: 100)
 
 Read-all flags:
   -b, --blog name       Only mark articles from this blog
-  -y, --yes             Skip confirmation
-
-Examples:
-  blogwatcher articles                              # Unread articles, default fields
-  blogwatcher articles -f id,title,summary          # Custom fields
-  blogwatcher articles --all --blog "Tech Blog"     # All from specific blog
-  blogwatcher articles 42                            # Show article details
-  blogwatcher articles 42 -f title,content,summary  # Specific fields
-  blogwatcher articles read 42                       # Mark as read
-  blogwatcher articles read-all                      # Mark all as read
-  blogwatcher articles read-all --blog "Tech Blog" -y
+  -y, --yes             Skip confirmation prompt
 ```
 
-**articles <id> output:**
+**articles list output format:**
+```
+Unread articles (page 1/3, 45 total):
+
+  [1] [new] First Article Title
+       Blog: Tech Blog
+       URL: https://example.com/1
+       Published: 2024-01-10
+
+  [2] [read] Another Article
+       Blog: Tech Blog
+       URL: https://example.com/2
+       Published: 2024-01-09
+```
+
+**articles list with custom fields output format:**
+```
+Unread articles (page 1/1, 2 total):
+
+  [1] First Article Title | Tech Blog | https://example.com/1
+  [2] Another Article | Tech Blog | https://example.com/2
+```
+Fields are displayed in a single line, pipe-separated, in the order specified.
+
+**articles <id> output (default fields):**
 ```
 ID: 42
 Title: Understanding Go Concurrency
@@ -222,17 +378,51 @@ Content:
   [Full article content...]
 ```
 
+**articles <id> output (custom fields):**
+Same key-value format, only showing requested fields.
+
+**articles read <id> output:**
+```
+Marked article 42 as read
+```
+Or if already read:
+```
+Article 42 is already marked as read.
+```
+
+**articles read-all output:**
+```
+Mark 45 unread article(s) as read? [y/N]: y
+Marked 45 article(s) as read
+```
+Or with `--yes`:
+```
+Marked 45 article(s) as read
+```
+Or if no unread:
+```
+No unread articles to mark as read.
+```
+
 ---
 
 ## Deprecated Commands
 
-| Old Command      | New Command              |
-|------------------|--------------------------|
-| `add`            | `blogs add`              |
-| `remove`         | `blogs remove`           |
-| `read`           | `articles read`          |
-| `unread`         | `articles unread`        |
-| `read-all`       | `articles read-all`      |
+Old top-level commands will be deprecated but still work:
+
+| Old Command      | New Command              | Deprecation Message |
+|------------------|--------------------------|---------------------|
+| `add`            | `blogs add`              | "Warning: 'add' is deprecated, use 'blogs add'" |
+| `remove`         | `blogs remove`           | "Warning: 'remove' is deprecated, use 'blogs remove'" |
+| `read`           | `articles read`          | "Warning: 'read' is deprecated, use 'articles read'" |
+| `unread`         | `articles unread`        | "Warning: 'unread' is deprecated, use 'articles unread'" |
+| `read-all`       | `articles read-all`      | "Warning: 'read-all' is deprecated, use 'articles read-all'" |
+
+Behavior:
+- Command still executes
+- Prints deprecation warning to stderr
+- Exit code unchanged
+- Hidden from `--help`
 
 ---
 
@@ -247,14 +437,14 @@ rootCmd
 ├── importCmd
 ├── summaryCmd
 ├── blogsCmd (with subcommands)
-│   ├── blogsListCmd (default)
-│   ├── blogsShowCmd (positional arg)
+│   ├── blogsListCmd (default, no subcommand)
+│   ├── blogsShowCmd (positional arg name)
 │   ├── blogsAddCmd
 │   ├── blogsEditCmd
 │   └── blogsRemoveCmd
 └── articlesCmd (with subcommands)
-    ├── articlesListCmd (default)
-    ├── articlesShowCmd (positional arg)
+    ├── articlesListCmd (default, no subcommand)
+    ├── articlesShowCmd (positional arg id)
     ├── articlesReadCmd
     ├── articlesUnreadCmd
     └── articlesReadAllCmd
@@ -268,9 +458,10 @@ rootCmd
 4. **Examples**: Common use cases with real values
 5. **Defaults**: Always state default values
 
-### Backward Compatibility
+### Output Character Encoding
 
-Old top-level commands (`add`, `remove`, `read`, `unread`, `read-all`) will be deprecated:
-- Still work but print deprecation warning
-- Hidden from help
-- Removed in next major version
+- Use emoji indicators (✓, ⚠, ✗) for status
+- Graceful degradation: if terminal doesn't support Unicode, fall back to text:
+  - ✓ → [OK]
+  - ⚠ → [WARN]
+  - ✗ → [ERR]
