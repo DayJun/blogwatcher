@@ -397,9 +397,11 @@ func newArticlesCommand() *cobra.Command {
 	var showAll bool
 	var showRead bool
 	var blogName string
+	var blogID int64
 	var page int
 	var perPage int
 	var fields string
+	var search string
 
 	cmd := &cobra.Command{
 		Use:   "articles [id]",
@@ -426,17 +428,25 @@ With an article ID, shows detailed information about that article.`,
 				return runArticlesShow(db, args[0])
 			}
 
+			// Build blogID pointer
+			var blogIDPtr *int64
+			if blogID > 0 {
+				blogIDPtr = &blogID
+			}
+
 			// Otherwise, list articles
-			return runArticlesList(db, showAll, showRead, blogName, page, perPage, fields)
+			return runArticlesList(db, showAll, showRead, blogName, blogIDPtr, search, page, perPage, fields)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all articles (including read)")
 	cmd.Flags().BoolVarP(&showRead, "read", "r", false, "Show only read articles")
 	cmd.Flags().StringVarP(&blogName, "blog", "b", "", "Filter by blog name")
+	cmd.Flags().Int64Var(&blogID, "blog-id", 0, "Filter by blog ID")
 	cmd.Flags().IntVarP(&page, "page", "p", 1, "Page number")
 	cmd.Flags().IntVarP(&perPage, "per-page", "P", 20, "Articles per page (max 100)")
 	cmd.Flags().StringVar(&fields, "fields", "id,title,blog,read,url,published", "Comma-separated fields to display")
+	cmd.Flags().StringVarP(&search, "search", "s", "", "Filter by article title (partial match)")
 
 	cmd.AddCommand(newArticlesReadCommand())
 	cmd.AddCommand(newArticlesUnreadCommand())
@@ -445,7 +455,7 @@ With an article ID, shows detailed information about that article.`,
 	return cmd
 }
 
-func runArticlesList(db *storage.Database, showAll bool, showRead bool, blogName string, page int, perPage int, fields string) error {
+func runArticlesList(db *storage.Database, showAll bool, showRead bool, blogName string, blogID *int64, search string, page int, perPage int, fields string) error {
 	// Determine status filter
 	status := "unread"
 	if showAll {
@@ -465,7 +475,7 @@ func runArticlesList(db *storage.Database, showAll bool, showRead bool, blogName
 		perPage = 100
 	}
 
-	result, err := controller.GetArticles(db, status, blogName, page, perPage, "")
+	result, err := controller.GetArticlesWithSearch(db, status, blogName, blogID, search, page, perPage)
 	if err != nil {
 		printError(err)
 		return markError(err)
@@ -478,7 +488,11 @@ func runArticlesList(db *storage.Database, showAll bool, showRead bool, blogName
 		} else if status == "all" {
 			label = "Articles"
 		}
-		color.New(color.FgCyan, color.Bold).Printf("%s (no results):\n\n", label)
+		msg := fmt.Sprintf("%s (no results)", label)
+		if search != "" {
+			msg = fmt.Sprintf("%s matching '%s' (no results)", label, search)
+		}
+		color.New(color.FgCyan, color.Bold).Println(msg)
 		return nil
 	}
 
@@ -490,6 +504,9 @@ func runArticlesList(db *storage.Database, showAll bool, showRead bool, blogName
 		label = "Read articles"
 	} else if status == "all" {
 		label = "All articles"
+	}
+	if search != "" {
+		label = fmt.Sprintf("%s matching '%s'", label, search)
 	}
 	color.New(color.FgCyan, color.Bold).Printf("%s (page %d/%d, %d total):\n\n", label, result.Page, result.TotalPages, result.Total)
 	for _, article := range result.Articles {

@@ -416,3 +416,62 @@ func TestBlogsRemoveByID(t *testing.T) {
 	removed, _ := db.GetBlog(blog.ID)
 	assert.Nil(t, removed)
 }
+
+func TestArticlesListSearch(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := db.AddBlog(model.Blog{Name: "Test", URL: "https://test.com"})
+	db.AddArticle(model.Article{BlogID: blog.ID, Title: "Go Programming", URL: "https://test.com/1"})
+	db.AddArticle(model.Article{BlogID: blog.ID, Title: "Python Tutorial", URL: "https://test.com/2"})
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newArticlesCommand()
+	cmd.SetArgs([]string{"--search", "go"})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Go Programming")
+	assert.NotContains(t, buf.String(), "Python")
+}
+
+func TestArticlesListByBlogID(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog1, _ := db.AddBlog(model.Blog{Name: "Blog1", URL: "https://blog1.com"})
+	blog2, _ := db.AddBlog(model.Blog{Name: "Blog2", URL: "https://blog2.com"})
+	db.AddArticle(model.Article{BlogID: blog1.ID, Title: "Article 1", URL: "https://blog1.com/1"})
+	db.AddArticle(model.Article{BlogID: blog2.ID, Title: "Article 2", URL: "https://blog2.com/1"})
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newArticlesCommand()
+	cmd.SetArgs([]string{"--blog-id", fmt.Sprintf("%d", blog1.ID)})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Article 1")
+	assert.NotContains(t, buf.String(), "Article 2")
+}
