@@ -298,3 +298,61 @@ func TestGetBlogsPaginated(t *testing.T) {
 	assert.Equal(t, 2, result.TotalPages)
 	assert.Len(t, result.Blogs, 2)
 }
+
+func TestGetArticlesWithSearch(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	blog1, err := AddBlog(db, "Blog1", "https://blog1.com", "", "")
+	require.NoError(t, err)
+	blog2, err := AddBlog(db, "Blog2", "https://blog2.com", "", "")
+	require.NoError(t, err)
+
+	_, err = db.AddArticle(model.Article{BlogID: blog1.ID, Title: "Go Tips", URL: "https://blog1.com/1"})
+	require.NoError(t, err)
+	_, err = db.AddArticle(model.Article{BlogID: blog1.ID, Title: "Python Guide", URL: "https://blog1.com/2"})
+	require.NoError(t, err)
+	_, err = db.AddArticle(model.Article{BlogID: blog2.ID, Title: "Rust Intro", URL: "https://blog2.com/1"})
+	require.NoError(t, err)
+
+	// Test basic pagination
+	result, err := GetArticlesWithSearch(db, "unread", "", nil, "", 1, 20)
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.Total)
+	assert.Len(t, result.Articles, 3)
+	assert.Equal(t, 1, result.Page)
+	assert.Equal(t, 20, result.PerPage)
+	assert.Equal(t, 1, result.TotalPages)
+
+	// Test search filter
+	result, err = GetArticlesWithSearch(db, "unread", "", nil, "go", 1, 20)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Total)
+	assert.Len(t, result.Articles, 1)
+	assert.Equal(t, "Go Tips", result.Articles[0].Title)
+
+	// Test blogID filter with valid ID
+	result, err = GetArticlesWithSearch(db, "unread", "", &blog1.ID, "", 1, 20)
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Total)
+	assert.Len(t, result.Articles, 2)
+
+	// Test blogID filter with invalid ID
+	invalidID := int64(999)
+	_, err = GetArticlesWithSearch(db, "unread", "", &invalidID, "", 1, 20)
+	assert.IsType(t, BlogIDNotFoundError{}, err)
+
+	// Test blogName takes precedence over blogID
+	result, err = GetArticlesWithSearch(db, "unread", "Blog2", &blog1.ID, "", 1, 20)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Total) // Blog2 has 1 article, not blog1's 2
+	assert.Len(t, result.Articles, 1)
+	assert.Equal(t, "Rust Intro", result.Articles[0].Title)
+
+	// Test empty results
+	emptyResult, err := GetArticlesWithSearch(db, "unread", "", nil, "nonexistent", 1, 20)
+	require.NoError(t, err)
+	assert.Equal(t, 0, emptyResult.Total)
+	assert.Len(t, emptyResult.Articles, 0)
+	assert.Equal(t, 1, emptyResult.TotalPages)
+}
