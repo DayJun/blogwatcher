@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Hyaxia/blogwatcher/internal/config"
 	"github.com/Hyaxia/blogwatcher/internal/llm"
 	"github.com/Hyaxia/blogwatcher/internal/model"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
@@ -88,7 +89,7 @@ func TestGenerateSummary(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	client := llm.NewClient(llm.Config{
+	client := llm.NewClient(config.LLMConfig{
 		APIKey:  "test-key",
 		BaseURL: server.URL,
 	})

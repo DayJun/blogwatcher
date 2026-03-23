@@ -13,6 +13,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"github.com/Hyaxia/blogwatcher/internal/config"
 	"github.com/Hyaxia/blogwatcher/internal/controller"
 	"github.com/Hyaxia/blogwatcher/internal/llm"
 	"github.com/Hyaxia/blogwatcher/internal/model"
@@ -446,6 +447,106 @@ func newImportCommand() *cobra.Command {
 	return cmd
 }
 
+func newInitCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize blogwatcher configuration.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dataDir, err := config.DefaultDataDir()
+			if err != nil {
+				return fmt.Errorf("get data directory: %w", err)
+			}
+
+			configPath, err := config.DefaultConfigPath()
+			if err != nil {
+				return fmt.Errorf("get config path: %w", err)
+			}
+
+			// Check if already initialized
+			existingCfg, err := config.Load("")
+			if err != nil {
+				return err
+			}
+			if existingCfg.IsConfigured() {
+				color.New(color.FgYellow).Printf("Configuration already exists at %s\n", configPath)
+				return nil
+			}
+
+			color.New(color.FgCyan, color.Bold).Println("Welcome to BlogWatcher!")
+			fmt.Println()
+			color.New(color.FgWhite).Println("Let's set up your configuration.")
+			fmt.Println()
+
+			reader := bufio.NewReader(os.Stdin)
+
+			// Base URL
+			fmt.Printf("API Base URL [%s]: ", config.DefaultBaseURL)
+			baseURL, err := reader.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			baseURL = strings.TrimSpace(baseURL)
+			if baseURL == "" {
+				baseURL = config.DefaultBaseURL
+			}
+
+			// API Key
+			fmt.Print("API Key: ")
+			apiKey, err := reader.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			apiKey = strings.TrimSpace(apiKey)
+			if apiKey == "" {
+				color.New(color.FgRed).Println("API Key is required.")
+				return fmt.Errorf("API key is required")
+			}
+
+			// Model
+			fmt.Printf("Model [%s]: ", config.DefaultModel)
+			modelName, err := reader.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				modelName = config.DefaultModel
+			}
+
+			// Create config
+			cfg := &config.Config{
+				LLM: config.LLMConfig{
+					BaseURL: baseURL,
+					APIKey:  apiKey,
+					Model:   modelName,
+				},
+			}
+
+			// Save config
+			if err := cfg.Save(""); err != nil {
+				return fmt.Errorf("save config: %w", err)
+			}
+
+			// Initialize database
+			db, err := storage.OpenDatabase("")
+			if err != nil {
+				return fmt.Errorf("initialize database: %w", err)
+			}
+			db.Close()
+
+			fmt.Println()
+			color.New(color.FgGreen, color.Bold).Println("✓ Configuration saved!")
+			color.New(color.FgWhite).Printf("  Config: %s\n", configPath)
+			color.New(color.FgWhite).Printf("  Database: %s\n", dataDir+"/blogwatcher.db")
+			fmt.Println()
+			color.New(color.FgCyan).Println("You can now use 'blogwatcher add' to start tracking blogs.")
+
+			return nil
+		},
+	}
+	return cmd
+}
+
 func newSummaryCommand() *cobra.Command {
 	var allFlag bool
 	var forceFlag bool
@@ -456,18 +557,23 @@ func newSummaryCommand() *cobra.Command {
 		Short: "Generate LLM summary for articles.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load config
+			cfg, err := config.Load("")
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			if !cfg.IsConfigured() {
+				color.New(color.FgRed).Println("Not configured. Run 'blogwatcher init' first.")
+				return fmt.Errorf("not configured")
+			}
+
 			db, err := storage.OpenDatabase("")
 			if err != nil {
 				return err
 			}
 			defer db.Close()
 
-			llmClient := llm.NewClient(llm.Config{})
-			if !llmClient.HasAPIKey() {
-				err := llm.MissingAPIKeyError{}
-				printError(err)
-				return markError(err)
-			}
+			llmClient := llm.NewClient(cfg.LLM)
 
 			ctx := cmd.Context()
 

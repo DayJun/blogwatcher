@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
+	"github.com/Hyaxia/blogwatcher/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,11 +34,10 @@ func TestSummarize(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(Config{
+	client := NewClient(config.LLMConfig{
 		APIKey:  "test-key",
 		BaseURL: server.URL,
 		Model:   "gpt-4o-mini",
-		Timeout: 10 * time.Second,
 	})
 
 	summary, err := client.Summarize(context.Background(), "Test Title", "Test content")
@@ -47,7 +46,7 @@ func TestSummarize(t *testing.T) {
 }
 
 func TestSummarizeMissingAPIKey(t *testing.T) {
-	client := NewClient(Config{
+	client := NewClient(config.LLMConfig{
 		BaseURL: "https://api.openai.com/v1",
 		Model:   "gpt-4o-mini",
 	})
@@ -56,9 +55,9 @@ func TestSummarizeMissingAPIKey(t *testing.T) {
 }
 
 func TestHasAPIKey(t *testing.T) {
-	client := NewClient(Config{})
+	client := NewClient(config.LLMConfig{})
 	assert.False(t, client.HasAPIKey())
 
-	client = NewClient(Config{APIKey: "test"})
+	client = NewClient(config.LLMConfig{APIKey: "test"})
 	assert.True(t, client.HasAPIKey())
 }

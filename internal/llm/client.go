@@ -7,47 +7,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
+
+	"github.com/Hyaxia/blogwatcher/internal/config"
 )
 
 const (
-	defaultBaseURL = "https://api.openai.com/v1"
-	defaultModel   = "gpt-4o-mini"
 	defaultTimeout = 60 * time.Second
 	maxContentLen  = 128000 // ~32k tokens
 	maxTokens      = 500
 )
 
-type Config struct {
-	APIKey  string
-	BaseURL string
-	Model   string
-	Timeout time.Duration
-}
-
 type Client struct {
-	config Config
+	config config.LLMConfig
 	http   *http.Client
 }
 
-func NewClient(config Config) *Client {
-	if config.BaseURL == "" {
-		config.BaseURL = defaultBaseURL
+func NewClient(cfg config.LLMConfig) *Client {
+	if cfg.BaseURL == "" {
+		cfg.BaseURL = config.DefaultBaseURL
 	}
-	if config.Model == "" {
-		config.Model = defaultModel
-	}
-	if config.Timeout == 0 {
-		config.Timeout = defaultTimeout
-	}
-	if config.APIKey == "" {
-		config.APIKey = os.Getenv("OPENAI_API_KEY")
+	if cfg.Model == "" {
+		cfg.Model = config.DefaultModel
 	}
 
 	return &Client{
-		config: config,
-		http:   &http.Client{Timeout: config.Timeout},
+		config: cfg,
+		http:   &http.Client{Timeout: defaultTimeout},
 	}
 }
 
