@@ -345,64 +345,35 @@ func newArticlesCommand() *cobra.Command {
 	var blogName string
 	var page int
 	var perPage int
+	var fields string
 
 	cmd := &cobra.Command{
-		Use:   "articles",
-		Short: "List articles.",
+		Use:   "articles [id]",
+		Short: "Manage articles.",
+		Long: `Manage articles.
+
+Without arguments, lists unread articles.
+With an article ID, shows detailed information about that article.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
 			db, err := storage.OpenDatabase("")
 			if err != nil {
 				return err
 			}
 			defer db.Close()
 
-			// Determine status filter
-			status := "unread"
-			if showAll {
-				status = "all"
-			} else if showRead {
-				status = "read"
+			// If an ID is provided, show article details
+			if len(args) == 1 {
+				return runArticlesShow(db, args[0])
 			}
 
-			// Validate and normalize pagination
-			if page < 1 {
-				page = 1
-			}
-			if perPage < 1 {
-				perPage = 20
-			}
-			if perPage > 100 {
-				perPage = 100
-			}
-
-			result, err := controller.GetArticles(db, status, blogName, page, perPage)
-			if err != nil {
-				printError(err)
-				return markError(err)
-			}
-
-			if result.Total == 0 {
-				label := "Unread articles"
-				if status == "read" {
-					label = "Read articles"
-				} else if status == "all" {
-					label = "Articles"
-				}
-				color.New(color.FgCyan, color.Bold).Printf("%s (no results):\n\n", label)
-				return nil
-			}
-
-			label := "Unread articles"
-			if status == "read" {
-				label = "Read articles"
-			} else if status == "all" {
-				label = "All articles"
-			}
-			color.New(color.FgCyan, color.Bold).Printf("%s (page %d/%d, %d total):\n\n", label, result.Page, result.TotalPages, result.Total)
-			for _, article := range result.Articles {
-				printArticle(article, result.BlogNames[article.BlogID])
-			}
-			return nil
+			// Otherwise, list articles
+			return runArticlesList(db, showAll, showRead, blogName, page, perPage, fields)
 		},
 	}
 
@@ -411,15 +382,115 @@ func newArticlesCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&blogName, "blog", "b", "", "Filter by blog name")
 	cmd.Flags().IntVarP(&page, "page", "p", 1, "Page number")
 	cmd.Flags().IntVarP(&perPage, "per-page", "P", 20, "Articles per page (max 100)")
+	cmd.Flags().StringVar(&fields, "fields", "id,title,blog,read,url,published", "Comma-separated fields to display")
+
+	cmd.AddCommand(newArticlesReadCommand())
+	cmd.AddCommand(newArticlesUnreadCommand())
+	cmd.AddCommand(newArticlesReadAllCommand())
+
 	return cmd
 }
 
-func newReadCommand() *cobra.Command {
+func runArticlesList(db *storage.Database, showAll bool, showRead bool, blogName string, page int, perPage int, fields string) error {
+	// Determine status filter
+	status := "unread"
+	if showAll {
+		status = "all"
+	} else if showRead {
+		status = "read"
+	}
+
+	// Validate and normalize pagination
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+
+	result, err := controller.GetArticles(db, status, blogName, page, perPage)
+	if err != nil {
+		printError(err)
+		return markError(err)
+	}
+
+	if result.Total == 0 {
+		label := "Unread articles"
+		if status == "read" {
+			label = "Read articles"
+		} else if status == "all" {
+			label = "Articles"
+		}
+		color.New(color.FgCyan, color.Bold).Printf("%s (no results):\n\n", label)
+		return nil
+	}
+
+	// Parse fields
+	fieldList := parseFields(fields)
+
+	label := "Unread articles"
+	if status == "read" {
+		label = "Read articles"
+	} else if status == "all" {
+		label = "All articles"
+	}
+	color.New(color.FgCyan, color.Bold).Printf("%s (page %d/%d, %d total):\n\n", label, result.Page, result.TotalPages, result.Total)
+	for _, article := range result.Articles {
+		output := FormatArticleFields(&article, result.BlogNames, fieldList)
+		fmt.Printf("  %s\n", output)
+	}
+	return nil
+}
+
+func runArticlesShow(db *storage.Database, idStr string) error {
+	articleID, err := parseID(idStr)
+	if err != nil {
+		printError(err)
+		return markError(err)
+	}
+
+	article, err := db.GetArticle(articleID)
+	if err != nil {
+		printError(err)
+		return markError(err)
+	}
+	if article == nil {
+		err := fmt.Errorf("Article %d not found", articleID)
+		printError(err)
+		return markError(err)
+	}
+
+	blog, err := db.GetBlog(article.BlogID)
+	if err != nil {
+		return err
+	}
+
+	blogNames := make(map[int64]string)
+	if blog != nil {
+		blogNames[article.BlogID] = blog.Name
+	}
+
+	// Default detail fields
+	fields := []string{"id", "title", "url", "blog", "published", "discovered", "read", "content"}
+	output := FormatArticleDetail(article, blogNames, fields)
+	fmt.Println(output)
+	return nil
+}
+
+func newArticlesReadCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "read <article_id>",
 		Short: "Mark an article as read.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
 			articleID, err := parseID(args[0])
 			if err != nil {
 				return err
@@ -445,7 +516,43 @@ func newReadCommand() *cobra.Command {
 	return cmd
 }
 
-func newReadAllCommand() *cobra.Command {
+func newArticlesUnreadCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "unread <article_id>",
+		Short: "Mark an article as unread.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
+			articleID, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			db, err := storage.OpenDatabase("")
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			article, err := controller.MarkArticleUnread(db, articleID)
+			if err != nil {
+				printError(err)
+				return markError(err)
+			}
+			if !article.IsRead {
+				fmt.Printf("Article %d is already marked as unread.\n", articleID)
+			} else {
+				color.New(color.FgGreen).Printf("Marked article %d as unread\n", articleID)
+			}
+			return nil
+		},
+	}
+	return cmd
+}
+
+func newArticlesReadAllCommand() *cobra.Command {
 	var blogName string
 	var yes bool
 
@@ -453,6 +560,11 @@ func newReadAllCommand() *cobra.Command {
 		Use:   "read-all",
 		Short: "Mark all unread articles as read.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := RequireConfig(); err != nil {
+				printError(err)
+				return markError(err)
+			}
+
 			db, err := storage.OpenDatabase("")
 			if err != nil {
 				return err
@@ -499,35 +611,19 @@ func newReadAllCommand() *cobra.Command {
 	return cmd
 }
 
-func newUnreadCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "unread <article_id>",
-		Short: "Mark an article as unread.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			articleID, err := parseID(args[0])
-			if err != nil {
-				return err
-			}
-			db, err := storage.OpenDatabase("")
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-			article, err := controller.MarkArticleUnread(db, articleID)
-			if err != nil {
-				printError(err)
-				return markError(err)
-			}
-			if !article.IsRead {
-				fmt.Printf("Article %d is already marked as unread.\n", articleID)
-			} else {
-				color.New(color.FgGreen).Printf("Marked article %d as unread\n", articleID)
-			}
-			return nil
-		},
+func parseFields(fields string) []string {
+	if fields == "" {
+		return []string{"id", "title", "blog", "read", "url", "published"}
 	}
-	return cmd
+	parts := strings.Split(fields, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func newImportCommand() *cobra.Command {
@@ -820,21 +916,6 @@ func printScanResult(result scanner.ScanResult) {
 	}
 	fmt.Printf("    Source: %s | Found: %d | ", sourceLabel, result.TotalFound)
 	color.New(statusColor).Printf("New: %d\n", result.NewArticles)
-}
-
-func printArticle(article model.Article, blogName string) {
-	status := color.New(color.FgYellow).Sprint("[new]")
-	if article.IsRead {
-		status = color.New(color.FgHiBlack).Sprint("[read]")
-	}
-	idStr := color.New(color.FgCyan).Sprintf("[%d]", article.ID)
-	fmt.Printf("  %s %s %s\n", idStr, status, article.Title)
-	fmt.Printf("       Blog: %s\n", blogName)
-	fmt.Printf("       URL: %s\n", article.URL)
-	if article.PublishedDate != nil {
-		fmt.Printf("       Published: %s\n", article.PublishedDate.Format("2006-01-02"))
-	}
-	fmt.Println()
 }
 
 func printError(err error) {

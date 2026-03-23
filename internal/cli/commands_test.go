@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Hyaxia/blogwatcher/internal/config"
 	"github.com/Hyaxia/blogwatcher/internal/controller"
+	"github.com/Hyaxia/blogwatcher/internal/model"
 	"github.com/Hyaxia/blogwatcher/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -190,4 +192,106 @@ func TestBlogsAddCustomName(t *testing.T) {
 
 	blog, _ := db.GetBlogByName("My Custom Name")
 	assert.NotNil(t, blog)
+}
+
+func TestArticlesList(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := db.AddBlog(model.Blog{Name: "Test", URL: "https://test.com"})
+	db.AddArticle(model.Article{BlogID: blog.ID, Title: "Article 1", URL: "https://test.com/1"})
+	db.AddArticle(model.Article{BlogID: blog.ID, Title: "Article 2", URL: "https://test.com/2"})
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newArticlesCommand()
+	cmd.SetArgs([]string{})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Article 1")
+	assert.Contains(t, buf.String(), "Article 2")
+}
+
+func TestArticlesListCustomFields(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := db.AddBlog(model.Blog{Name: "Test", URL: "https://test.com"})
+	db.AddArticle(model.Article{BlogID: blog.ID, Title: "Test Article", URL: "https://test.com/1", Summary: "Test summary"})
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newArticlesCommand()
+	cmd.SetArgs([]string{"--fields", "id,title,summary"})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Test Article")
+	assert.Contains(t, buf.String(), "Test summary")
+}
+
+func TestArticlesShow(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := db.AddBlog(model.Blog{Name: "Test", URL: "https://test.com"})
+	article, _ := db.AddArticle(model.Article{BlogID: blog.ID, Title: "Test Article", URL: "https://test.com/1", Content: "Full content"})
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	cmd := newArticlesCommand()
+	cmd.SetArgs([]string{fmt.Sprintf("%d", article.ID)})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Title: Test Article")
+	assert.Contains(t, buf.String(), "Content:")
+}
+
+func TestArticlesRead(t *testing.T) {
+	setupTestConfig(t)
+	db := setupTestDBAtPath(t, defaultTestDBPath(t))
+	defer db.Close()
+
+	blog, _ := db.AddBlog(model.Blog{Name: "Test", URL: "https://test.com"})
+	article, _ := db.AddArticle(model.Article{BlogID: blog.ID, Title: "Test", URL: "https://test.com/1"})
+
+	cmd := newArticlesCommand()
+	cmd.SetArgs([]string{"read", fmt.Sprintf("%d", article.ID)})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	updated, _ := db.GetArticle(article.ID)
+	assert.True(t, updated.IsRead)
 }
